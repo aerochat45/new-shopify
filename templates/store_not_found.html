@@ -1,0 +1,28 @@
+<html>
+<head>
+    <title>Store Not Found - AeroChat</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 40px; background-color: #f8f9fa; }
+        .container { max-width: 600px; margin: 0 auto; background: white; padding: 30px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+        .error { background-color: #f8d7da; border: 1px solid #f5c6cb; color: #721c24; padding: 20px; border-radius: 5px; text-align: center; }
+        h1 { color: #dc3545; }
+        .details { margin-top: 20px; padding: 15px; background: #f1f2f6; border-radius: 5px; }
+        .label { font-weight: bold; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="error">
+            <h1>❌ Store Not Found in AeroChat</h1>
+            <p>Your store <strong>{{ store_url }}</strong> is not registered with AeroChat.</p>
+            <p>Please contact AeroChat support to register your store first.</p>
+        </div>
+        
+        <div class="details">
+            <div><span class="label">Shop Domain:</span> {{ shop_domain }}</div>
+            <div><span class="label">Store URL:</span> {{ store_url }}</div>
+            <div><span class="label">API Response Status:</span> {{ status_code }}</div>
+        </div>
+    </div>
+</body>
+</html>

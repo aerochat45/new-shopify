@@ -1,0 +1,142 @@
+# webhook_routes.py
+from flask import request, jsonify
+import hmac
+import hashlib
+import base64
+import requests
+from config import logger, datetime, json, API_SECRET, THIRD_PARTY_API_URL
+from database import db
+
+def uninstall_webhook():
+    """Handle app uninstallation webhook"""
+    logger.info("App uninstall webhook received")
+    
+    try:
+        # Verify HMAC
+        hmac_header = request.headers.get('X-Shopify-Hmac-Sha256')
+        data = request.get_data()
+        computed_hmac = base64.b64encode(hmac.new(API_SECRET.encode('utf-8'), data, hashlib.sha256).digest()).decode()
+        
+        if not hmac.compare_digest(computed_hmac, hmac_header):
+            logger.error("Invalid uninstall webhook HMAC verification failed")
+            return jsonify({'error': 'Invalid webhook HMAC'}), 401
+
+        webhook_data = request.json
+        shop_domain = request.headers.get('X-Shopify-Shop-Domain')
+        
+        logger.info(f"Processing uninstall webhook for shop: {shop_domain}")
+        logger.info(f"Uninstall webhook data: {json.dumps(webhook_data, indent=2)}")
+
+        # Clean up shop data (you might want to mark as uninstalled instead of deleting)
+        if shop_domain:
+            # Update shop record to mark as uninstalled
+            db.create_or_update_shop(shop_domain, 
+                                   status='uninstalled', 
+                                   uninstalled_at=datetime.now().isoformat())
+            logger.info(f"Marked shop {shop_domain} as uninstalled")
+            
+            # You could also call a third-party API to handle uninstallation
+            # notify_third_party_uninstall(shop_domain)
+            # try:
+            #     api_url = 'https://aerochat-staging.dummywebdemo.xyz/chat/api/unsubscribe'  # Replace with actual URL
+            #     payload = {'store_url': shop_domain}
+            #     response = requests.post(api_url, json=payload, timeout=5)  # Timeout to avoid blocking
+            #     response.raise_for_status()
+            #     logger.info(f"Third-party API called successfully for {shop_domain}")
+            # except requests.exceptions.RequestException as api_err:
+            #     logger.error(f"Third-party API call failed for {shop_domain}: {str(api_err)}")
+            # Don't fail the webhook—log and proceed
+        return jsonify({'status': 'success'}), 200
+        
+    except Exception as e:
+        logger.error(f"Error in uninstall webhook: {str(e)}")
+        return jsonify({'error': 'Uninstall webhook processing failed'}), 500
+
+def subscription_webhook():
+    logger.info("Subscription webhook received")
+    
+    try:
+        # Verify HMAC
+        hmac_header = request.headers.get('X-Shopify-Hmac-Sha256')
+        data = request.get_data()
+        computed_hmac = base64.b64encode(hmac.new(API_SECRET.encode('utf-8'), data, hashlib.sha256).digest()).decode()
+        
+        if not hmac.compare_digest(computed_hmac, hmac_header):
+            logger.error("Invalid webhook HMAC verification failed")
+            return jsonify({'error': 'Invalid webhook HMAC'}), 401
+
+        webhook_data = request.json
+        shop_domain = request.headers.get('X-Shopify-Shop-Domain', 'unknown.myshopify.com')
+        
+        logger.info(f"Processing webhook for shop: {shop_domain}")
+        logger.info(f"Webhook data: {json.dumps(webhook_data, indent=2)}")
+
+        subscription = webhook_data.get('app_subscription')
+        if not subscription:
+            logger.error("Missing app_subscription in webhook data")
+            return jsonify({'error': 'Missing app_subscription in webhook data'}), 400
+
+        # Get shop data from database
+        shop_data = db.get_shop(shop_domain)
+        logger.info(f"Shop data from database: {json.dumps(shop_data, indent=2, default=str)}")
+
+        if not shop_data:
+            logger.error(f"No shop data found for: {shop_domain}")
+            # Try to create minimal shop record
+            db.create_or_update_shop(shop_domain)
+            shop_data = db.get_shop(shop_domain)
+
+        # Update subscription in database
+        db.create_or_update_subscription(shop_domain, subscription)
+
+        # Prepare data for third-party API
+        email = shop_data.get('email', 'support+test52@aerochat.ai')
+        print(f"Email: {email}")
+        store_url = shop_data.get('store_url', shop_domain.replace('.myshopify.com', ''))
+        
+        plan_name = subscription.get('name', 'Unknown').strip()
+        
+        # Extract interval from lineItems if available
+        interval = 'unknown'
+        line_items = subscription.get('lineItems', [])
+        print(f"Line items: {line_items}")
+        if line_items and len(line_items) > 0:
+            plan_data = line_items[0].get('plan', {})
+            if plan_data.get('__typename') == 'AppRecurringPricing':
+                interval = plan_data.get('interval', 'unknown')
+        
+        plan_id = f'{plan_name} | {interval.capitalize()} Plan'
+
+        payload = {
+            'email': email,
+            'store_url': f'{store_url}.myshopify.com',
+            'plan_id': plan_id
+        }
+
+        logger.info(f"Calling third-party API with payload: {json.dumps(payload, indent=2)}")
+
+        # Call third-party API
+        try:
+            third_party_response = requests.post(THIRD_PARTY_API_URL, json=payload, timeout=10)
+            
+            logger.info(f"Third-party API response status: {third_party_response.status_code}")
+            logger.info(f"Third-party API response body: {third_party_response.text}")
+            
+            if third_party_response.status_code != 200:
+                logger.error(f'Third-party API call failed: Status {third_party_response.status_code}, Response: {third_party_response.text}')
+            else:
+                logger.info("Third-party API call successful")
+                
+        except requests.exceptions.Timeout:
+            logger.error("Third-party API call timed out")
+        except Exception as e:
+            logger.error(f'Error calling third-party API: {str(e)}')
+
+        # Log final database state
+        db.log_database_state()
+
+        return jsonify({'status': 'success'}), 200
+        
+    except Exception as e:
+        logger.error(f"Error in subscription webhook: {str(e)}")
+        return jsonify({'error': 'Webhook processing failed'}), 500

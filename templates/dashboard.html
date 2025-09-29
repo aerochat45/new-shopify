@@ -1,0 +1,62 @@
+<html>
+<head>
+    <title>AeroChat Dashboard</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 40px; background-color: #f8f9fa; }
+        .container { max-width: 800px; margin: 0 auto; background: white; padding: 30px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+        h1 { color: #2c3e50; border-bottom: 2px solid #3498db; padding-bottom: 10px; }
+        .info-row { display: flex; justify-content: space-between; margin: 15px 0; padding: 10px; background: #f1f2f6; border-radius: 5px; }
+        .label { font-weight: bold; color: #2c3e50; }
+        .value { color: #27ae60; }
+        .success { background-color: #d4edda; border: 1px solid #c3e6cb; color: #155724; padding: 15px; border-radius: 5px; margin: 20px 0; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🚀 AeroChat Dashboard</h1>
+        <div class="success">
+            ✅ Successfully connected to AeroChat! Your store is ready to use our services.
+        </div>
+        
+        <div class="info-row">
+            <span class="label">Shop Domain:</span>
+            <span class="value">{{ shop_domain }}</span>
+        </div>
+        
+        <div class="info-row">
+            <span class="label">Shop Name:</span>
+            <span class="value">{{ shop_data.get('shop_name', 'N/A') }}</span>
+        </div>
+        
+        <div class="info-row">
+            <span class="label">Email:</span>
+            <span class="value">{{ shop_data.get('email', email) }}</span>
+        </div>
+        
+        <!-- <div class="info-row">
+            <span class="label">Subscribed Plan:</span>
+            <span class="value">{{ plan }}</span>
+        </div> -->
+        
+        <div class="info-row">
+            <span class="label">Shop ID:</span>
+            <span class="value">{{ shop_data.get('shop_id', 'N/A') }}</span>
+        </div>
+        
+        <div class="info-row">
+            <span class="label">Store URL:</span>
+            <span class="value">{{ store_url }}</span>
+        </div>
+        
+        <div class="info-row">
+            <span class="label">Company ID:</span>
+            <span class="value">{{ company_id }}</span>
+        </div>
+        
+        <div class="info-row">
+            <span class="label">Status:</span>
+            <span class="value">{{ shop_data.get('status', 'Active') }}</span>
+        </div>
+    </div>
+</body>
+</html>
