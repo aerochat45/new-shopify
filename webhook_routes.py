@@ -7,6 +7,16 @@ import requests
 from config import logger, datetime, json, API_SECRET, THIRD_PARTY_API_URL
 from database import db
 
+def delete_shop_data(shop_domain):
+    """Hard-delete shop and related subscriptions. Safe to comment out when not needed."""
+    try:
+        if not shop_domain:
+            return False
+        return db.delete_shop_and_subscriptions(shop_domain)
+    except Exception as e:
+        logger.error(f"delete_shop_data failed for {shop_domain}: {str(e)}")
+        return False
+
 def uninstall_webhook():
     """Handle app uninstallation webhook"""
     logger.info("App uninstall webhook received")
@@ -27,13 +37,16 @@ def uninstall_webhook():
         logger.info(f"Processing uninstall webhook for shop: {shop_domain}")
         logger.info(f"Uninstall webhook data: {json.dumps(webhook_data, indent=2)}")
 
-        # Clean up shop data (you might want to mark as uninstalled instead of deleting)
+        # Clean up shop data (soft-delete/mark as uninstalled)
         if shop_domain:
             # Update shop record to mark as uninstalled
-            db.create_or_update_shop(shop_domain, 
-                                   status='uninstalled', 
-                                   uninstalled_at=datetime.now().isoformat())
+            db.create_or_update_shop(shop_domain,
+                                     status='uninstalled',
+                                     uninstalled_at=datetime.now().isoformat())
             logger.info(f"Marked shop {shop_domain} as uninstalled")
+
+            # Optional: Hard delete data from our DB
+            delete_shop_data(shop_domain)
             
             # You could also call a third-party API to handle uninstallation
             # notify_third_party_uninstall(shop_domain)

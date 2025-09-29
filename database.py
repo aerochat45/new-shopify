@@ -244,6 +244,24 @@ class ShopifyAppDatabase:
             finally:
                 session.close()
 
+    def delete_shop_and_subscriptions(self, shop_domain):
+        """Delete a shop and all related subscriptions by shop_domain"""
+        with self.lock:
+            session = self._get_session()
+            try:
+                # Delete related subscriptions first due to potential FK constraints
+                session.query(Subscription).filter_by(shop_domain=shop_domain).delete(synchronize_session=False)
+                session.query(Shop).filter_by(shop_domain=shop_domain).delete(synchronize_session=False)
+                session.commit()
+                logger.info(f"Deleted shop and subscriptions for {shop_domain}")
+                return True
+            except Exception as e:
+                session.rollback()
+                logger.error(f"Error deleting shop data for {shop_domain}: {str(e)}")
+                return False
+            finally:
+                session.close()
+
     def log_database_state(self):
         """Log current database state for debugging"""
         session = self._get_session()
