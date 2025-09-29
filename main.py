@@ -2,7 +2,7 @@
 from flask import Flask
 import os
 from config import logger, SECRET_KEY
-from routes import install, callback, check_subscription, home, debug_shop
+from routes import install, callback, check_subscription, home, debug_shop, fetch_pages
 from webhook_routes import uninstall_webhook, subscription_webhook
 
 app = Flask(__name__)
@@ -17,6 +17,7 @@ app.route('/oauth/callback')(callback)
 app.route('/check_subscription')(check_subscription)
 app.route('/')(home)
 app.route('/debug/shop/<shop_domain>')(debug_shop)
+app.route('/fetch_pages')(fetch_pages)
 
 # Register webhook routes
 app.route('/webhooks/uninstall', methods=['POST'])(uninstall_webhook)

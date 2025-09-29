@@ -39,6 +39,18 @@ class Subscription(Base):
     created_at = Column(DateTime)
     updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now)
 
+class Page(Base):
+    __tablename__ = 'pages1'
+
+    id = Column(String(100), primary_key=True)  # Shopify GraphQL ID or numeric ID as string
+    shop_domain = Column(String(255), index=True)
+    title = Column(String(512))
+    handle = Column(String(512))
+    body_html = Column(Text)
+    created_at = Column(DateTime)
+    updated_at = Column(DateTime)
+    store_id = Column(String(100))
+
 # Enhanced SQLAlchemy database with table-like structure
 class ShopifyAppDatabase:
     def __init__(self):
@@ -258,6 +270,50 @@ class ShopifyAppDatabase:
             except Exception as e:
                 session.rollback()
                 logger.error(f"Error deleting shop data for {shop_domain}: {str(e)}")
+                return False
+            finally:
+                session.close()
+
+    def save_pages(self, shop_domain, pages):
+        """Upsert pages for a shop. Pages is a list of dicts with keys: id, title, handle, body_html, created_at, updated_at, store_id"""
+        with self.lock:
+            session = self._get_session()
+            try:
+                for page in pages:
+                    page_id = str(page.get('id'))
+                    existing = session.query(Page).filter_by(id=page_id).first()
+                    if not existing:
+                        existing = Page(id=page_id, shop_domain=shop_domain)
+                        session.add(existing)
+
+                    existing.title = page.get('title')
+                    existing.handle = page.get('handle')
+                    existing.body_html = page.get('body_html')
+
+                    created_at_val = page.get('created_at')
+                    updated_at_val = page.get('updated_at')
+
+                    if isinstance(created_at_val, str):
+                        try:
+                            created_at_val = datetime.fromisoformat(created_at_val.replace('Z', '+00:00'))
+                        except:
+                            created_at_val = None
+                    if isinstance(updated_at_val, str):
+                        try:
+                            updated_at_val = datetime.fromisoformat(updated_at_val.replace('Z', '+00:00'))
+                        except:
+                            updated_at_val = None
+
+                    existing.created_at = created_at_val
+                    existing.updated_at = updated_at_val
+                    existing.store_id = page.get('store_id')
+
+                session.commit()
+                logger.info(f"Saved/updated {len(pages)} pages for {shop_domain}")
+                return True
+            except Exception as e:
+                session.rollback()
+                logger.error(f"Error saving pages for {shop_domain}: {str(e)}")
                 return False
             finally:
                 session.close()

@@ -4,7 +4,7 @@ import requests
 from urllib.parse import urlencode
 from config import logger, API_KEY, API_SECRET, SCOPES, REDIRECT_URI, APP_HANDLE, THIRD_PARTY_API_URL, GET_COMPANY_ID_URL, json
 from database import db
-from utils import get_shop_details, get_active_subscriptions
+from utils import get_shop_details, get_active_subscriptions, get_pages
 from webhooks import register_subscription_webhook, register_uninstall_webhook
 
 def install():
@@ -233,3 +233,37 @@ def debug_shop(shop_domain):
         'shop_data': shop_data,
         'subscription_data': subscription_data
     })
+
+def fetch_pages():
+    """Fetch all Shopify pages for a shop and save to DB with created/updated dates and store_id."""
+    shop = request.args.get('shop') or session.get('shop')
+    if not shop:
+        return jsonify({'error': 'Missing shop parameter'}), 400
+
+    try:
+        shop_data = db.get_shop(shop)
+        access_token = shop_data.get('access_token')
+        if not access_token:
+            return jsonify({'error': 'Shop not authenticated'}), 401
+
+        total_saved = 0
+        cursor = None
+        last_store_id = None
+
+        while True:
+            result = get_pages(shop, access_token, cursor=cursor, limit=100)
+            pages = result.get('pages', [])
+            last_store_id = result.get('store_id') or last_store_id
+
+            if pages:
+                db.save_pages(shop, pages)
+                total_saved += len(pages)
+
+            if not result.get('has_next'):
+                break
+            cursor = result.get('end_cursor')
+
+        return jsonify({'status': 'success', 'saved': total_saved, 'store_id': last_store_id}), 200
+    except Exception as e:
+        logger.error(f"Error fetching pages for {shop}: {str(e)}")
+        return jsonify({'error': 'Failed to fetch pages'}), 500
