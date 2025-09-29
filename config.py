@@ -3,7 +3,10 @@ import os
 import logging
 from datetime import datetime
 import json
+from dotenv import load_dotenv
+import os
 
+load_dotenv()  # <- this loads your .env into os.environ
 # Configure logging
 logging.basicConfig(
     level=logging.INFO,
@@ -22,8 +25,8 @@ SCOPES = os.getenv('SHOPIFY_SCOPES', 'read_products,write_products,read_orders,w
 REDIRECT_URI = os.getenv('SHOPIFY_REDIRECT_URI', 'https://191ce502050d.ngrok-free.app/oauth/callback')
 APP_HANDLE = os.getenv('SHOPIFY_APP_HANDLE', 'nishant-app-2')
 THIRD_PARTY_BASE = os.getenv('THIRD_PARTY_BASE', 'https://aerochat-staging.dummywebdemo.xyz')
-THIRD_PARTY_API_URL = f'{THIRD_PARTY_BASE}/chat/api/shopify-create-user'
-GET_COMPANY_ID_URL = f'{THIRD_PARTY_BASE}/chat/shopify/get_company_id'
+THIRD_PARTY_API_URL = f'{THIRD_PARTY_BASE}/chat/api/v1/shopify-create-user'
+GET_COMPANY_ID_URL = f'{THIRD_PARTY_BASE}/chat/api/v1/get_company_id'
 
 # Database configuration
 DATABASE_URL = os.getenv('DATABASE_URL', 'postgresql://username:password@localhost/shopify_app')

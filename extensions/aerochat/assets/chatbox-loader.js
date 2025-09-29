@@ -37,8 +37,8 @@
 //   });
   
 (function () {
-  let storeUrl = 'aerochatuser1.myshopify.com';
-  //let storeUrl = `https:\\${Shopify.shop}`;
+  // let storeUrl = 'aerochatuser1.myshopify.com';
+  let storeUrl = `https:\\${Shopify.shop}`;
   //let storeUrl = "demostore-aerochat.myshopify.com";
 
   console.log(storeUrl);

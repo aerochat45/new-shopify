@@ -135,7 +135,7 @@ def get_pages(shop, access_token, cursor=None, limit=100):
                 id
                 title
                 handle
-                bodyHtml
+                body
                 createdAt
                 updatedAt
               }
