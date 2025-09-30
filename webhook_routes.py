@@ -109,7 +109,7 @@ def subscription_webhook():
         
         plan_name = subscription.get('name', 'Unknown').strip()
         
-        # Extract interval from lineItems if available
+        # Extract interval from lineItems if available; otherwise fall back to DB value
         interval = 'unknown'
         line_items = subscription.get('lineItems', [])
         print(f"Line items: {line_items}")
@@ -117,8 +117,24 @@ def subscription_webhook():
             plan_data = line_items[0].get('plan', {})
             if plan_data.get('__typename') == 'AppRecurringPricing':
                 interval = plan_data.get('interval', 'unknown')
-        
-        plan_id = f'{plan_name} | {interval.capitalize()} Plan'
+        if not line_items or interval == 'unknown' or not interval:
+            try:
+                active_sub = db.get_active_subscription(shop_domain)
+                if active_sub and active_sub.get('interval'):
+                    interval = active_sub.get('interval')
+            except Exception as _e:
+                logger.error(f"Failed to get interval from DB for {shop_domain}: {str(_e)}")
+
+        # Normalize interval to display label
+        interval_lc = (interval or '').lower()
+        if interval_lc in ['every_30_days', 'monthly', 'month']:
+            interval_label = 'Monthly'
+        elif interval_lc in ['annual', 'yearly', 'year']:
+            interval_label = 'Yearly'
+        else:
+            interval_label = 'Unknown'
+
+        plan_id = f'{plan_name} | {interval_label} Plan'
 
         payload = {
             'email': email,
