@@ -17,6 +17,22 @@ def delete_shop_data(shop_domain):
         logger.error(f"delete_shop_data failed for {shop_domain}: {str(e)}")
         return False
 
+def notify_third_party_unsubscribe(shop_domain):
+    """Call AeroChat unsubscribe API. Safe to comment out the call site if needed."""
+    try:
+        if not shop_domain:
+            return
+        api_url = 'https://app.aerochat.ai/chat/api/v2/unsubscribe'
+        payload = {'store_url': shop_domain}
+        response = requests.post(api_url, json=payload, timeout=15s)
+        logger.info(f"Unsubscribe API status {response.status_code} for {shop_domain}")
+        if response.status_code >= 400:
+            logger.error(f"Unsubscribe API failed for {shop_domain}: {response.text}")
+    except requests.exceptions.RequestException as api_err:
+        logger.error(f"Unsubscribe API error for {shop_domain}: {str(api_err)}")
+    except Exception as e:
+        logger.error(f"Unexpected error calling unsubscribe API for {shop_domain}: {str(e)}")
+
 def uninstall_webhook():
     """Handle app uninstallation webhook"""
     logger.info("App uninstall webhook received")
@@ -44,6 +60,9 @@ def uninstall_webhook():
                                      status='uninstalled',
                                      uninstalled_at=datetime.now().isoformat())
             logger.info(f"Marked shop {shop_domain} as uninstalled")
+
+            # Third-party unsubscribe (safe, non-blocking). Comment out next line to disable.
+            notify_third_party_unsubscribe(shop_domain)
 
             # Optional: Hard delete data from our DB
             delete_shop_data(shop_domain)
