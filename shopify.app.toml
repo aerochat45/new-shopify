@@ -9,15 +9,15 @@ embedded = false
 api_version = "2025-07"
 
 [[webhooks.subscriptions]]
-topics = ["customers/data_request"]
+compliance_topics = ["customers/data_request"]
 uri = "https://aerochat-v1.onrender.com/webhooks/customers/data_request"
 
 [[webhooks.subscriptions]]
-topics = ["customers/redact"]
+compliance_topics = ["customers/redact"]
 uri = "https://aerochat-v1.onrender.com/webhooks/customers/redact"
 
 [[webhooks.subscriptions]]
-topics = ["shop/redact"]
+compliance_topics = ["shop/redact"]
 uri = "https://aerochat-v1.onrender.com/webhooks/shop/redact"
 
 [access_scopes]

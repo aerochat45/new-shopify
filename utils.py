@@ -359,6 +359,65 @@ def get_total_articles_count(shop, access_token):
         logger.error(f"Exception getting total articles count for {shop}: {str(e)}")
         return 0
 
+def get_total_products_count(shop, access_token):
+    """Get total count of products in Shopify store via REST count endpoint"""
+    logger.info(f"Getting total products count for: {shop}")
+    try:
+        url = f'https://{shop}/admin/api/2025-01/products/count.json'
+        headers = {
+            'Content-Type': 'application/json',
+            'X-Shopify-Access-Token': access_token
+        }
+
+        response = requests.get(url, headers=headers, timeout=15)
+        logger.info(f"Total products count API response status: {response.status_code}")
+
+        if response.status_code != 200:
+            logger.error(f"Failed to get total products count: {response.text}")
+            return 0
+
+        data = response.json() or {}
+        count = int(data.get('count', 0))
+        logger.info(f"Total products count for {shop}: {count}")
+        return count
+    except Exception as e:
+        logger.error(f"Exception getting total products count for {shop}: {str(e)}")
+        return 0
+
+def get_total_collections_count(shop, access_token):
+    """Get total count of collections (custom + smart) via REST count endpoints"""
+    logger.info(f"Getting total collections count for: {shop}")
+    try:
+        headers = {
+            'Content-Type': 'application/json',
+            'X-Shopify-Access-Token': access_token
+        }
+
+        custom_url = f'https://{shop}/admin/api/2025-01/custom_collections/count.json'
+        smart_url = f'https://{shop}/admin/api/2025-01/smart_collections/count.json'
+
+        custom_resp = requests.get(custom_url, headers=headers, timeout=15)
+        smart_resp = requests.get(smart_url, headers=headers, timeout=15)
+
+        if custom_resp.status_code != 200:
+            logger.error(f"Failed to get custom collections count: {custom_resp.text}")
+            custom_count = 0
+        else:
+            custom_count = int((custom_resp.json() or {}).get('count', 0))
+
+        if smart_resp.status_code != 200:
+            logger.error(f"Failed to get smart collections count: {smart_resp.text}")
+            smart_count = 0
+        else:
+            smart_count = int((smart_resp.json() or {}).get('count', 0))
+
+        total = custom_count + smart_count
+        logger.info(f"Total collections count for {shop}: {total} (custom={custom_count}, smart={smart_count})")
+        return total
+    except Exception as e:
+        logger.error(f"Exception getting total collections count for {shop}: {str(e)}")
+        return 0
+
 def verify_shopify_hmac(query_params, hmac_to_verify):
     """Verify Shopify HMAC for embedded app requests"""
     try:

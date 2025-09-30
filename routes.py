@@ -4,7 +4,7 @@ import requests
 from urllib.parse import urlencode
 from config import logger, API_KEY, API_SECRET, SCOPES, REDIRECT_URI, APP_HANDLE, THIRD_PARTY_API_URL, GET_COMPANY_ID_URL, json
 from database import db
-from utils import get_shop_details, get_active_subscriptions, get_pages, get_articles, get_total_pages_count, get_total_articles_count
+from utils import get_shop_details, get_active_subscriptions, get_pages, get_articles, get_total_pages_count, get_total_articles_count, get_total_products_count, get_total_collections_count
 from webhooks import register_subscription_webhook, register_uninstall_webhook
 from datetime import datetime
 def install():
@@ -807,15 +807,17 @@ def get_store_info():
         shop_domain = shop_domain+'.myshopify.com'
         pages_synced = db.get_pages_count(shop_domain)
         blogs_synced = db.get_articles_count(shop_domain)
-        products_count = db.get_products_count(shop_domain)
-        collections_count = db.get_collections_count(shop_domain)
+        # For products and collections, return LIVE counts from Shopify (not DB)
+        access_token = shop_data.get('access_token')
+        products_count = get_total_products_count(shop_domain, access_token) if access_token else 0
+        collections_count = get_total_collections_count(shop_domain, access_token) if access_token else 0
         
         # Get total counts from Shopify store if we have access token
         pages_total = 0
         blogs_total = 0
-        if shop_data.get('access_token'):
-            pages_total = get_total_pages_count(shop_domain, shop_data.get('access_token'))
-            blogs_total = get_total_articles_count(shop_domain, shop_data.get('access_token'))
+        if access_token:
+            pages_total = get_total_pages_count(shop_domain, access_token)
+            blogs_total = get_total_articles_count(shop_domain, access_token)
         
         return jsonify({
             'status': 'success',
