@@ -23,6 +23,7 @@ class Shop(Base):
     store_url = Column(String(255))
     company_id = Column(String(100))
     status = Column(String(50), default='active')
+    initial_sync_completed = Column(Boolean, default=False)
     created_at = Column(DateTime, default=datetime.now)
     updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now)
 
@@ -182,6 +183,7 @@ class ShopifyAppDatabase:
                         'store_url': shop.store_url,
                         'company_id': shop.company_id,
                         'status': shop.status,
+                        'initial_sync_completed': shop.initial_sync_completed,
                         'created_at': shop.created_at.isoformat() if shop.created_at else None,
                         'updated_at': shop.updated_at.isoformat() if shop.updated_at else None
                     }
@@ -215,6 +217,7 @@ class ShopifyAppDatabase:
                         'store_url': shop.store_url,
                         'company_id': shop.company_id,
                         'status': shop.status,
+                        'initial_sync_completed': shop.initial_sync_completed,
                         'created_at': shop.created_at.isoformat() if shop.created_at else None,
                         'updated_at': shop.updated_at.isoformat() if shop.updated_at else None
                     }

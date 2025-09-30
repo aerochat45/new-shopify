@@ -96,6 +96,48 @@ def callback():
         else:
             logger.warning(f"Failed to register uninstall webhook for shop: {shop}")
         
+        # Check if initial sync is needed
+        shop_data = db.get_shop(shop)
+        if not shop_data.get('initial_sync_completed', False):
+            logger.info(f"Starting initial sync for shop: {shop}")
+            
+            # Get company_id for the shop (this should be available after shop details are fetched)
+            company_id = shop_data.get('company_id')
+            if not company_id:
+                # Try to get company_id from third-party API
+                try:
+                    company_check_response = requests.get(
+                        GET_COMPANY_ID_URL, 
+                        params={"store_url": shop},
+                        headers={"Content-Type": "application/json"},
+                        timeout=10
+                    )
+                    
+                    if company_check_response.status_code == 200:
+                        company_data = company_check_response.json()
+                        company_id = company_data.get('company_id')
+                        if company_id:
+                            # Update shop with company_id
+                            db.create_or_update_shop(shop, company_id=company_id)
+                            logger.info(f"Retrieved and saved company_id: {company_id} for shop: {shop}")
+                except Exception as e:
+                    logger.error(f"Failed to get company_id for initial sync: {str(e)}")
+            
+            # Perform initial sync if we have company_id
+            if company_id:
+                try:
+                    sync_result = initial_sync_pages_and_articles(shop, access_token, company_id)
+                    if sync_result['success']:
+                        logger.info(f"Initial sync completed successfully for {shop}: {sync_result['pages_saved']} pages, {sync_result['articles_saved']} articles")
+                    else:
+                        logger.error(f"Initial sync failed for {shop}: {sync_result.get('error', 'Unknown error')}")
+                except Exception as e:
+                    logger.error(f"Exception during initial sync for {shop}: {str(e)}")
+            else:
+                logger.warning(f"Skipping initial sync for {shop} - no company_id available")
+        else:
+            logger.info(f"Initial sync already completed for shop: {shop}")
+        
         db.log_database_state()
         
         return redirect(url_for('check_subscription', shop=shop))
@@ -193,6 +235,10 @@ def home():
                 # Update shop data with company ID
                 db.create_or_update_shop(shop_domain, company_id=company_id)
                 
+                # Check if initial sync is completed
+                initial_sync_completed = shop_data.get('initial_sync_completed', False)
+                logger.info(f"Initial sync status for {shop_domain}: {initial_sync_completed}")
+                
                 # Get counts for dashboard
                 pages_synced = db.get_pages_count(shop_domain)
                 blogs_synced = db.get_articles_count(shop_domain)
@@ -248,7 +294,8 @@ def home():
                     blogs_synced=blogs_synced,
                     blogs_total=blogs_total,
                     products_count=products_count,
-                    collections_count=collections_count
+                    collections_count=collections_count,
+                    initial_sync_completed=initial_sync_completed
                 )
             else:
                 logger.warning(f"No company_id in successful response for store: {store_url}")
@@ -581,6 +628,158 @@ def sync_articles():
     except Exception as e:
         logger.error(f"Error syncing articles for {shop}: {str(e)}")
         return jsonify({'error': 'Failed to sync articles'}), 500
+
+def initial_sync_pages_and_articles(shop, access_token, company_id):
+    """Perform initial sync of pages and articles during app installation. This is called only once."""
+    logger.info(f"Starting initial sync for shop: {shop}")
+    
+    try:
+        sync_time = datetime.utcnow()
+        pages_saved = 0
+        articles_saved = 0
+        sync_errors = []
+        
+        # Sync pages with error handling
+        logger.info(f"Syncing pages for {shop}")
+        cursor = None
+        all_page_ids = []
+        page_sync_attempts = 0
+        max_page_attempts = 3
+        
+        while True:
+            try:
+                result = get_pages(shop, access_token, cursor=cursor, limit=100)
+                pages = result.get('pages', [])
+                
+                if pages:
+                    # Add company_id to each page
+                    for p in pages:
+                        p['company_id'] = company_id
+                    
+                    # Save pages to database with retry logic
+                    db_success = False
+                    for attempt in range(max_page_attempts):
+                        try:
+                            db.save_pages(shop, pages, company_id=company_id, sync_time=sync_time)
+                            db_success = True
+                            break
+                        except Exception as db_error:
+                            logger.warning(f"Database save attempt {attempt + 1} failed for pages: {str(db_error)}")
+                            if attempt == max_page_attempts - 1:
+                                sync_errors.append(f"Failed to save pages after {max_page_attempts} attempts: {str(db_error)}")
+                    
+                    if db_success:
+                        pages_saved += len(pages)
+                        all_page_ids.extend([str(p.get('id')) for p in pages])
+                        
+                        # Call third-party API for pages with timeout handling
+                        try:
+                            _call_third_party_pages_bulk(company_id, pages, prev_sync_time=None)
+                        except Exception as api_error:
+                            logger.warning(f"Third-party API call failed for pages: {str(api_error)}")
+                            sync_errors.append(f"Third-party API error for pages: {str(api_error)}")
+                
+                if not result.get('has_next'):
+                    break
+                cursor = result.get('end_cursor')
+                
+            except Exception as page_error:
+                logger.error(f"Error syncing pages batch for {shop}: {str(page_error)}")
+                sync_errors.append(f"Pages sync error: {str(page_error)}")
+                # Continue with next batch or break if critical
+                if page_sync_attempts >= max_page_attempts:
+                    logger.error(f"Max page sync attempts reached for {shop}")
+                    break
+                page_sync_attempts += 1
+        
+        # Sync articles with error handling
+        logger.info(f"Syncing articles for {shop}")
+        cursor = None
+        all_article_ids = []
+        article_sync_attempts = 0
+        max_article_attempts = 3
+        
+        while True:
+            try:
+                result = get_articles(shop, access_token, cursor=cursor, limit=100)
+                articles = result.get('articles', [])
+                
+                if articles:
+                    # Add company_id to each article
+                    for a in articles:
+                        a['company_id'] = company_id
+                    
+                    # Save articles to database with retry logic
+                    db_success = False
+                    for attempt in range(max_article_attempts):
+                        try:
+                            db.save_articles(shop, articles, company_id=company_id, sync_time=sync_time)
+                            db_success = True
+                            break
+                        except Exception as db_error:
+                            logger.warning(f"Database save attempt {attempt + 1} failed for articles: {str(db_error)}")
+                            if attempt == max_article_attempts - 1:
+                                sync_errors.append(f"Failed to save articles after {max_article_attempts} attempts: {str(db_error)}")
+                    
+                    if db_success:
+                        articles_saved += len(articles)
+                        all_article_ids.extend([str(a.get('id')) for a in articles])
+                        
+                        # Call third-party API for articles with timeout handling
+                        try:
+                            _call_third_party_articles_bulk(company_id, articles, prev_sync_time=None)
+                        except Exception as api_error:
+                            logger.warning(f"Third-party API call failed for articles: {str(api_error)}")
+                            sync_errors.append(f"Third-party API error for articles: {str(api_error)}")
+                
+                if not result.get('has_next'):
+                    break
+                cursor = result.get('end_cursor')
+                
+            except Exception as article_error:
+                logger.error(f"Error syncing articles batch for {shop}: {str(article_error)}")
+                sync_errors.append(f"Articles sync error: {str(article_error)}")
+                # Continue with next batch or break if critical
+                if article_sync_attempts >= max_article_attempts:
+                    logger.error(f"Max article sync attempts reached for {shop}")
+                    break
+                article_sync_attempts += 1
+        
+        # Mark initial sync as completed even if there were some errors
+        # This prevents infinite retry loops during installation
+        try:
+            db.create_or_update_shop(shop, initial_sync_completed=True)
+        except Exception as update_error:
+            logger.error(f"Failed to mark initial sync as completed: {str(update_error)}")
+            sync_errors.append(f"Failed to update sync status: {str(update_error)}")
+        
+        # Log results
+        if sync_errors:
+            logger.warning(f"Initial sync completed with errors for {shop}: {pages_saved} pages, {articles_saved} articles. Errors: {sync_errors}")
+        else:
+            logger.info(f"Initial sync completed successfully for {shop}: {pages_saved} pages, {articles_saved} articles")
+        
+        return {
+            'success': True,
+            'pages_saved': pages_saved,
+            'articles_saved': articles_saved,
+            'sync_time': sync_time.isoformat(),
+            'errors': sync_errors if sync_errors else None
+        }
+        
+    except Exception as e:
+        logger.error(f"Critical error during initial sync for {shop}: {str(e)}")
+        # Still mark as completed to prevent retry loops
+        try:
+            db.create_or_update_shop(shop, initial_sync_completed=True)
+        except:
+            pass
+        return {
+            'success': False,
+            'error': str(e),
+            'pages_saved': 0,
+            'articles_saved': 0
+        }
 
 def public_dashboard():
     """Public dashboard page that shows the same content as regular dashboard but without store info"""
