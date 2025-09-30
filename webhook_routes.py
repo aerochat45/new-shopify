@@ -24,7 +24,7 @@ def notify_third_party_unsubscribe(shop_domain):
             return
         api_url = 'https://app.aerochat.ai/chat/api/v2/unsubscribe'
         payload = {'store_url': shop_domain}
-        response = requests.post(api_url, json=payload, timeout=15s)
+        response = requests.post(api_url, json=payload, timeout=15)
         logger.info(f"Unsubscribe API status {response.status_code} for {shop_domain}")
         if response.status_code >= 400:
             logger.error(f"Unsubscribe API failed for {shop_domain}: {response.text}")
