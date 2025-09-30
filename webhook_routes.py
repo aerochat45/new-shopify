@@ -188,3 +188,54 @@ def subscription_webhook():
     except Exception as e:
         logger.error(f"Error in subscription webhook: {str(e)}")
         return jsonify({'error': 'Webhook processing failed'}), 500
+
+def customers_data_request_webhook():
+    """GDPR: customers/data_request - verify HMAC and return 200"""
+    logger.info("GDPR customers/data_request webhook received")
+    try:
+        hmac_header = request.headers.get('X-Shopify-Hmac-Sha256')
+        data = request.get_data()
+        computed_hmac = base64.b64encode(hmac.new(API_SECRET.encode('utf-8'), data, hashlib.sha256).digest()).decode()
+        if not hmac.compare_digest(computed_hmac, hmac_header or ''):
+            logger.error("Invalid HMAC for customers/data_request")
+            return jsonify({'error': 'Invalid webhook HMAC'}), 401
+
+        logger.info(f"customers/data_request payload: {json.dumps(request.json or {}, indent=2)}")
+        return jsonify({'status': 'ok'}), 200
+    except Exception as e:
+        logger.error(f"Error in customers/data_request webhook: {str(e)}")
+        return jsonify({'error': 'Webhook processing failed'}), 500
+
+def customers_redact_webhook():
+    """GDPR: customers/redact - verify HMAC and return 200"""
+    logger.info("GDPR customers/redact webhook received")
+    try:
+        hmac_header = request.headers.get('X-Shopify-Hmac-Sha256')
+        data = request.get_data()
+        computed_hmac = base64.b64encode(hmac.new(API_SECRET.encode('utf-8'), data, hashlib.sha256).digest()).decode()
+        if not hmac.compare_digest(computed_hmac, hmac_header or ''):
+            logger.error("Invalid HMAC for customers/redact")
+            return jsonify({'error': 'Invalid webhook HMAC'}), 401
+
+        logger.info(f"customers/redact payload: {json.dumps(request.json or {}, indent=2)}")
+        return jsonify({'status': 'ok'}), 200
+    except Exception as e:
+        logger.error(f"Error in customers/redact webhook: {str(e)}")
+        return jsonify({'error': 'Webhook processing failed'}), 500
+
+def shop_redact_webhook():
+    """GDPR: shop/redact - verify HMAC and return 200"""
+    logger.info("GDPR shop/redact webhook received")
+    try:
+        hmac_header = request.headers.get('X-Shopify-Hmac-Sha256')
+        data = request.get_data()
+        computed_hmac = base64.b64encode(hmac.new(API_SECRET.encode('utf-8'), data, hashlib.sha256).digest()).decode()
+        if not hmac.compare_digest(computed_hmac, hmac_header or ''):
+            logger.error("Invalid HMAC for shop/redact")
+            return jsonify({'error': 'Invalid webhook HMAC'}), 401
+
+        logger.info(f"shop/redact payload: {json.dumps(request.json or {}, indent=2)}")
+        return jsonify({'status': 'ok'}), 200
+    except Exception as e:
+        logger.error(f"Error in shop/redact webhook: {str(e)}")
+        return jsonify({'error': 'Webhook processing failed'}), 500
