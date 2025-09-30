@@ -676,3 +676,44 @@ def get_store_info():
     except Exception as e:
         logger.error(f"Error getting store info for company_id {company_id}: {str(e)}")
         return jsonify({'error': 'Failed to get store information'}), 500
+
+def get_app_embed_url():
+    """API endpoint to get Shopify app embed block enable URL"""
+    company_id = request.args.get('company_id')
+    
+    if not company_id:
+        return jsonify({'error': 'Company ID is required'}), 400
+    
+    try:
+        shop_data = db.get_shop_by_company_id(company_id)
+        
+        if not shop_data:
+            return jsonify({'error': 'Shop not found for this company'}), 404
+        
+        shop_domain = shop_data.get('shop_domain')
+        if not shop_domain:
+            return jsonify({'error': 'Shop domain not found'}), 404
+        
+        # Extract store handle from shop domain (remove .myshopify.com)
+        store_handle = shop_domain.replace('.myshopify.com', '')
+        
+        # Generate the app embed block enable URL
+        # Format: https://admin.shopify.com/store/{store_handle}/themes/current/editor?context=apps&activateAppId={APP_API_KEY}/{APP_EMBED_HANDLE}
+        app_embed_url = f"https://admin.shopify.com/store/{store_handle}/themes/current/editor?context=apps&activateAppId={API_KEY}/{APP_HANDLE}"
+        
+        logger.info(f"Generated app embed URL for company_id {company_id}: {app_embed_url}")
+        
+        return jsonify({
+            'status': 'success',
+            'data': {
+                'company_id': company_id,
+                'shop_domain': shop_domain,
+                'store_handle': store_handle,
+                'app_embed_url': app_embed_url,
+                'redirect_url': app_embed_url
+            }
+        })
+        
+    except Exception as e:
+        logger.error(f"Error generating app embed URL for company_id {company_id}: {str(e)}")
+        return jsonify({'error': 'Failed to generate app embed URL'}), 500
