@@ -141,44 +141,6 @@
             font-size: 0.9rem;
         }
         
-        .info-section {
-            background: white;
-            border-radius: 12px;
-            padding: 1.5rem;
-            box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1);
-            border: 1px solid #e2e8f0;
-        }
-        
-        .info-section h2 {
-            font-size: 1.25rem;
-            font-weight: 600;
-            color: #374151;
-            margin-bottom: 1rem;
-        }
-        
-        .info-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-            gap: 1rem;
-        }
-        
-        .info-item {
-            display: flex;
-            flex-direction: column;
-        }
-        
-        .info-label {
-            font-size: 0.875rem;
-            color: #6b7280;
-            font-weight: 500;
-            margin-bottom: 0.25rem;
-        }
-        
-        .info-value {
-            color: #1f2937;
-            font-weight: 500;
-        }
-        
         .success-banner {
             background: #d1fae5;
             border: 1px solid #a7f3d0;
@@ -194,6 +156,28 @@
         .success-banner::before {
             content: "✅";
             font-size: 1.2rem;
+        }
+        
+        .store-name {
+            background: white;
+            border-radius: 12px;
+            padding: 1.5rem;
+            box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1);
+            border: 1px solid #e2e8f0;
+            text-align: center;
+            margin-bottom: 2rem;
+        }
+        
+        .store-name h2 {
+            font-size: 1.5rem;
+            font-weight: 600;
+            color: #374151;
+            margin-bottom: 0.5rem;
+        }
+        
+        .store-name p {
+            color: #6b7280;
+            font-size: 1rem;
         }
         
         @media (max-width: 768px) {
@@ -220,6 +204,11 @@
         
         <div class="success-banner">
             Successfully connected to AeroChat! Your store is ready to use our services.
+        </div>
+        
+        <div class="store-name">
+            <h2>Store: {{ store_name or 'Your Store' }}</h2>
+            <p>Connected and ready to sync content</p>
         </div>
         
         <div class="stats-grid">
@@ -267,57 +256,72 @@
                 <div class="static-info">Managed separately</div>
             </div>
         </div>
-        
-        <div class="info-section">
-            <h2>Store Information</h2>
-            <div class="info-grid">
-                <div class="info-item">
-                    <div class="info-label">Shop Domain</div>
-                    <div class="info-value">{{ shop_domain }}</div>
-                </div>
-                <div class="info-item">
-                    <div class="info-label">Shop Name</div>
-                    <div class="info-value">{{ shop_data.get('shop_name', 'N/A') }}</div>
-                </div>
-                <div class="info-item">
-                    <div class="info-label">Email</div>
-                    <div class="info-value">{{ shop_data.get('email', email) }}</div>
-                </div>
-                <div class="info-item">
-                    <div class="info-label">Shop ID</div>
-                    <div class="info-value">{{ shop_data.get('shop_id', 'N/A') }}</div>
-                </div>
-                <div class="info-item">
-                    <div class="info-label">Store URL</div>
-                    <div class="info-value">{{ store_url }}</div>
-                </div>
-                <div class="info-item">
-                    <div class="info-label">Company ID</div>
-                    <div class="info-value">{{ company_id }}</div>
-                </div>
-                <div class="info-item">
-                    <div class="info-label">Status</div>
-                    <div class="info-value">{{ shop_data.get('status', 'Active') }}</div>
-                </div>
-            </div>
-        </div>
     </div>
     
     <script>
+        const urlParams = new URLSearchParams(window.location.search);
+        const companyId = '10378';
+    
+        let storeInfo = null;
+    
+        // Function to load store information from Flask backend
+        function loadStoreInfo() {
+            if (!companyId) {
+                console.error('No company_id provided');
+                return;
+            }
+    
+            fetch(`http://localhost:5000/api/store_info?company_id=${companyId}`)
+                .then(response => response.json())
+                .then(data => {
+                    if (data.status === 'success') {
+                        storeInfo = data.data;
+                        updateDashboard(storeInfo);
+                    } else {
+                        console.error('Failed to load store info:', data.error);
+                    }
+                })
+                .catch(error => {
+                    console.error('Error loading store info:', error);
+                });
+        }
+    
+        function updateDashboard(info) {
+            if (info.store_name) {
+                document.querySelector('.store-name h2').textContent = `Store: ${info.store_name}`;
+            }
+    
+            document.getElementById('pages-count').textContent = info.pages_synced || 0;
+            document.getElementById('pages-description').textContent =
+                `${info.pages_synced || 0} of ${info.pages_total || 0} synced`;
+    
+            document.getElementById('blogs-count').textContent = info.blogs_synced || 0;
+            document.getElementById('blogs-description').textContent =
+                `${info.blogs_synced || 0} of ${info.blogs_total || 0} synced`;
+    
+            document.getElementById('products-count').textContent = info.products_count || 0;
+            document.getElementById('collections-count').textContent = info.collections_count || 0;
+        }
+    
         function syncPages() {
+            if (!storeInfo || !storeInfo.shop_domain) {
+                alert('Store information not loaded. Please refresh the page.');
+                return;
+            }
+    
             const btn = document.getElementById('pages-sync-btn');
             btn.textContent = 'Syncing...';
             btn.disabled = true;
             btn.classList.add('syncing');
-            
-            fetch('/sync_pages?shop={{ shop_domain }}')
+    
+            fetch(`http://localhost:5000/sync_pages?shop=${storeInfo.shop_domain}`)
                 .then(response => response.json())
                 .then(data => {
                     if (data.status === 'success') {
-                        // Update counts
                         document.getElementById('pages-count').textContent = data.synced_count;
-                        document.getElementById('pages-description').textContent = `${data.synced_count} of ${data.total_count} synced`;
-                        
+                        document.getElementById('pages-description').textContent =
+                            `${data.synced_count} of ${data.total_count} synced`;
+    
                         btn.textContent = 'Sync Complete';
                         setTimeout(() => {
                             btn.textContent = 'Sync Pages';
@@ -338,21 +342,26 @@
                     }, 2000);
                 });
         }
-        
+    
         function syncBlogs() {
+            if (!storeInfo || !storeInfo.shop_domain) {
+                alert('Store information not loaded. Please refresh the page.');
+                return;
+            }
+    
             const btn = document.getElementById('blogs-sync-btn');
             btn.textContent = 'Syncing...';
             btn.disabled = true;
             btn.classList.add('syncing');
-            
-            fetch('/sync_articles?shop={{ shop_domain }}')
+    
+            fetch(`http://localhost:5000/sync_articles?shop=${storeInfo.shop_domain}`)
                 .then(response => response.json())
                 .then(data => {
                     if (data.status === 'success') {
-                        // Update counts
                         document.getElementById('blogs-count').textContent = data.synced_count;
-                        document.getElementById('blogs-description').textContent = `${data.synced_count} of ${data.total_count} synced`;
-                        
+                        document.getElementById('blogs-description').textContent =
+                            `${data.synced_count} of ${data.total_count} synced`;
+    
                         btn.textContent = 'Sync Complete';
                         setTimeout(() => {
                             btn.textContent = 'Sync Blogs';
@@ -373,7 +382,11 @@
                     }, 2000);
                 });
         }
-        
+    
+        document.addEventListener('DOMContentLoaded', function() {
+            loadStoreInfo();
+        });
     </script>
+    
 </body>
 </html>

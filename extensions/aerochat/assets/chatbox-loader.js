@@ -38,10 +38,12 @@
   
 (function () {
   // let storeUrl = 'aerochatuser1.myshopify.com';
-  let storeUrl = `https:\\${Shopify.shop}`;
-  //let storeUrl = "demostore-aerochat.myshopify.com";
+  let storeUrl = `${Shopify.shop}`;
+  // or hardcoded
+  // let storeUrl = "https://demostore-aerochat.myshopify.com";
 
   console.log(storeUrl);
+
 
   const endpoint = 'https://app.aerochat.ai/chat/api/v1/get-script-url';
 

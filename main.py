@@ -2,15 +2,15 @@
 from flask import Flask
 import os
 from config import logger, SECRET_KEY
-from routes import install, callback, check_subscription, home, debug_shop, fetch_pages
+from routes import install, callback, check_subscription, home, debug_shop, fetch_pages, sync_pages, sync_articles, public_dashboard, get_store_info
 from webhook_routes import uninstall_webhook, subscription_webhook
-
+from flask_cors import CORS  # <-- add this
 app = Flask(__name__)
 app.config['SESSION_COOKIE_SECURE'] = True
 app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
 app.config['SESSION_COOKIE_NAME'] = 'session'
 app.secret_key = SECRET_KEY
-
+CORS(app, resources={r"/*": {"origins": "*"}})
 # Register routes
 app.route('/install')(install)
 app.route('/oauth/callback')(callback)
@@ -18,6 +18,10 @@ app.route('/check_subscription')(check_subscription)
 app.route('/')(home)
 app.route('/debug/shop/<shop_domain>')(debug_shop)
 app.route('/fetch_pages')(fetch_pages)
+app.route('/sync_pages')(sync_pages)
+app.route('/sync_articles')(sync_articles)
+app.route('/public_dashboard')(public_dashboard)
+app.route('/api/store_info')(get_store_info)
 
 # Register webhook routes
 app.route('/webhooks/uninstall', methods=['POST'])(uninstall_webhook)

@@ -4,9 +4,9 @@ import requests
 from urllib.parse import urlencode
 from config import logger, API_KEY, API_SECRET, SCOPES, REDIRECT_URI, APP_HANDLE, THIRD_PARTY_API_URL, GET_COMPANY_ID_URL, json
 from database import db
-from utils import get_shop_details, get_active_subscriptions, get_pages
+from utils import get_shop_details, get_active_subscriptions, get_pages, get_articles, get_total_pages_count, get_total_articles_count
 from webhooks import register_subscription_webhook, register_uninstall_webhook
-
+from datetime import datetime
 def install():
     shop = request.args.get('shop')
     logger.info(f"Install request received for shop: {shop}")
@@ -193,7 +193,48 @@ def home():
                 # Update shop data with company ID
                 db.create_or_update_shop(shop_domain, company_id=company_id)
                 
-                # Show successful home page
+                # Get counts for dashboard
+                pages_synced = db.get_pages_count(shop_domain)
+                blogs_synced = db.get_articles_count(shop_domain)
+                products_count = db.get_products_count(shop_domain)
+                collections_count = db.get_collections_count(shop_domain)
+                
+                # Get total counts from Shopify store
+                access_token = shop_data.get('access_token')
+                pages_total = get_total_pages_count(shop_domain, access_token) if access_token else 0
+                blogs_total = get_total_articles_count(shop_domain, access_token) if access_token else 0
+                
+                # Call autologin API and redirect to public page
+                try:
+                    autologin_response = requests.post(
+                        'https://app.aerochat.ai/api/autologin',
+                        json={'company_id': company_id},
+                        headers={'Content-Type': 'application/json'},
+                        timeout=10
+                    )
+                    
+                    if autologin_response.status_code == 200:
+                        autologin_data = autologin_response.json()
+                        if autologin_data.get('status') and autologin_data.get('auto_login_link'):
+                            logger.info(f"Autologin successful for company_id: {company_id}")
+                            
+                            # Store shop info in session for the public dashboard
+                            session['public_shop_domain'] = shop_domain
+                            session['public_store_name'] = shop_data.get('shop_name', store_url)
+                            session['public_company_id'] = company_id
+                            session['public_store_url'] = store_url
+                            
+                            # Redirect to the autologin link (without adding parameters)
+                            return redirect(autologin_data['auto_login_link'])
+                        else:
+                            logger.error(f"Autologin API returned invalid response: {autologin_data}")
+                    else:
+                        logger.error(f"Autologin API failed with status: {autologin_response.status_code}")
+                        
+                except Exception as e:
+                    logger.error(f"Error calling autologin API: {str(e)}")
+                
+                # Fallback to dashboard if autologin fails
                 return render_template(
                     'dashboard.html', 
                     shop_domain=shop_domain,
@@ -201,7 +242,13 @@ def home():
                     email=email, 
                     plan=plan, 
                     store_url=store_url,
-                    company_id=company_id
+                    company_id=company_id,
+                    pages_synced=pages_synced,
+                    pages_total=pages_total,
+                    blogs_synced=blogs_synced,
+                    blogs_total=blogs_total,
+                    products_count=products_count,
+                    collections_count=collections_count
                 )
             else:
                 logger.warning(f"No company_id in successful response for store: {store_url}")
@@ -250,20 +297,382 @@ def fetch_pages():
         cursor = None
         last_store_id = None
 
+        company_id = db.get_shop(shop).get('company_id')
+        sync_time = datetime.utcnow()
+
+        all_ids = []
         while True:
             result = get_pages(shop, access_token, cursor=cursor, limit=100)
             pages = result.get('pages', [])
             last_store_id = result.get('store_id') or last_store_id
 
             if pages:
-                db.save_pages(shop, pages)
+                # attach company_id to each page
+                for p in pages:
+                    if 'company_id' not in p:
+                        p['company_id'] = company_id
+                db.save_pages(shop, pages, company_id=company_id, sync_time=sync_time)
                 total_saved += len(pages)
+                all_ids.extend([str(p.get('id')) for p in pages])
 
             if not result.get('has_next'):
                 break
             cursor = result.get('end_cursor')
 
-        return jsonify({'status': 'success', 'saved': total_saved, 'store_id': last_store_id}), 200
+        # delete pages not present anymore
+        db.delete_pages_not_in_ids(shop, all_ids)
+
+        return jsonify({'status': 'success', 'saved': total_saved, 'store_id': last_store_id, 'deleted_missing': True}), 200
     except Exception as e:
         logger.error(f"Error fetching pages for {shop}: {str(e)}")
         return jsonify({'error': 'Failed to fetch pages'}), 500
+
+def _third_party_pages_base_url():
+    try:
+        return os.getenv('THIRD_PARTY_BASE')
+    except Exception as e:
+        logger.error(f"Failed to compute third-party base URL: {str(e)}")
+        return None
+import os
+def _call_third_party_pages_bulk(company_id, pages, prev_sync_time=None):
+    try:
+        base =  os.getenv('THIRD_PARTY_BASE')
+        print(base)
+        if not base:
+            return
+        url = f"{base}/chat/api/v2/pages"
+        payload = {
+            'company_id': company_id,
+            'pages': [
+                {
+                    'id': p.get('id'),
+                    'title': p.get('title'),
+                    'handle': p.get('handle'),
+                    'body': p.get('body') or p.get('body_html'),
+                    'created_at': p.get('created_at'),
+                    'updated_at': p.get('updated_at'),
+                    'published_at': p.get('published_at'),
+                    'published': p.get('published')
+                }
+                for p in pages
+            ],
+            'previous_sync_time': prev_sync_time
+        }
+        r = requests.post(url, json=payload, timeout=20)
+        logger.info(f"Third-party pages bulk sync status:{r} and {r.status_code}")
+    except Exception as e:
+        logger.error(f"Third-party pages bulk sync failed: {str(e)}")
+
+def _call_third_party_page_delete(company_id, page_id):
+    try:
+        base = _third_party_pages_base_url()
+        if not base:
+            return
+        url = f"{base}/chat/api/v2/pages"
+        payload = {
+            'action': 'delete',
+            'company_id': company_id,
+            'page': { 'id': page_id }
+        }
+        r = requests.post(url, json=payload, timeout=10)
+        logger.info(f"Third-party pages delete status: {r.status_code} for id {page_id}")
+    except Exception as e:
+        logger.error(f"Third-party pages delete failed for {page_id}: {str(e)}")
+
+def sync_pages():
+    """Sync Shopify pages: upsert created/edited and delete removed pages. Adds company_id, last_sync_time, keeps chunk_ids."""
+    shop = request.args.get('shop') or session.get('shop')
+    if not shop:
+        return jsonify({'error': 'Missing shop parameter'}), 400
+
+    try:
+        shop_data = db.get_shop(shop)
+        access_token = shop_data.get('access_token')
+        if not access_token:
+            return jsonify({'error': 'Shop not authenticated'}), 401
+
+        company_id = shop_data.get('company_id')
+        sync_time = datetime.utcnow()
+        total_saved = 0
+        cursor = None
+        all_ids = []
+
+        existing_meta = db.get_pages_meta_for_shop(shop)
+        existing_ids_before = set(existing_meta.keys())
+
+        bulk_pages = []
+        previous_sync_time = db.get_previous_pages_sync_time(shop)
+        while True:
+            result = get_pages(shop, access_token, cursor=cursor, limit=100)
+            pages = result.get('pages', [])
+            if pages:
+                upsert_batch = []
+                for p in pages:
+                    p['company_id'] = company_id
+                    pid = str(p.get('id'))
+                    prev = existing_meta.get(pid)
+                    # preserve existing chunk_ids by not overwriting when unchanged
+                    if prev and prev.get('chunk_ids') is not None:
+                        p['chunk_ids'] = prev['chunk_ids']
+                    upsert_batch.append(p)
+                    bulk_pages.append(p)
+
+                if upsert_batch:
+                    db.save_pages(shop, upsert_batch, company_id=company_id, sync_time=sync_time)
+                    total_saved += len(upsert_batch)
+                all_ids.extend([str(p.get('id')) for p in pages])
+            if not result.get('has_next'):
+                break
+            cursor = result.get('end_cursor')
+
+        # Bulk third-party sync for all fetched pages (create/update detection is handled on their side)
+        if bulk_pages:
+            prev_sync_iso = previous_sync_time.isoformat() if previous_sync_time else None
+            _call_third_party_pages_bulk(company_id, bulk_pages, prev_sync_time=prev_sync_iso)
+
+        # Determine deletions (anything existing not in fetched ids)
+        to_delete_ids = list(existing_ids_before - set(all_ids))
+        # Call third-party delete for each, before DB delete
+        if to_delete_ids:
+            # We need minimal page info to send to third-party; fetch rows first
+            # Use a simple query via helper
+            try:
+                # Inline helper to fetch Page rows by ids without adding new public API
+                from sqlalchemy.orm import Session
+            except Exception:
+                pass
+        # Simpler approach: build minimal payloads from ids
+        for pid in to_delete_ids:
+            _call_third_party_page_delete(company_id, pid)
+
+        deleted_count = db.delete_pages_not_in_ids(shop, all_ids)
+
+        # Get updated counts after sync
+        synced_count = db.get_pages_count(shop)
+        total_count = get_total_pages_count(shop, access_token)
+
+        return jsonify({
+            'status': 'success', 
+            'saved': total_saved, 
+            'deleted': deleted_count, 
+            'last_sync_time': sync_time.isoformat(),
+            'synced_count': synced_count,
+            'total_count': total_count
+        }), 200
+    except Exception as e:
+        logger.error(f"Error syncing pages for {shop}: {str(e)}")
+        return jsonify({'error': 'Failed to sync pages'}), 500
+
+def _call_third_party_articles_bulk(company_id, articles, prev_sync_time=None):
+    try:
+        base = os.getenv('THIRD_PARTY_BASE')
+        if not base:
+            return
+        url = f"{base}/chat/api/v2/articles"
+        payload = {
+            'company_id': company_id,
+            'articles': [
+                {
+                    'id': a.get('id'),
+                    'title': a.get('title'),
+                    'handle': a.get('handle'),
+                    'body': a.get('body') or a.get('body_html'),
+                    'created_at': a.get('created_at'),
+                    'updated_at': a.get('updated_at'),
+                    'published_at': a.get('published_at'),
+                    'published': a.get('published')
+                }
+                for a in articles
+            ],
+            'previous_sync_time': prev_sync_time
+        }
+        r = requests.post(url, json=payload, timeout=20)
+        logger.info(f"Third-party articles bulk sync status:{r} and {r.status_code}")
+    except Exception as e:
+        logger.error(f"Third-party articles bulk sync failed: {str(e)}")
+
+def _call_third_party_article_delete(company_id, article_id):
+    try:
+        base = os.getenv('THIRD_PARTY_BASE')
+        if not base:
+            return
+        url = f"{base}/chat/api/v2/articles"
+        payload = {
+            'action': 'delete',
+            'company_id': company_id,
+            'article': { 'id': article_id }
+        }
+        r = requests.post(url, json=payload, timeout=10)
+        logger.info(f"Third-party articles delete status: {r.status_code} for id {article_id}")
+    except Exception as e:
+        logger.error(f"Third-party articles delete failed for {article_id}: {str(e)}")
+
+def sync_articles():
+    """Sync Shopify articles: upsert created/edited and delete removed articles. Adds company_id, last_sync_time, keeps chunk_ids."""
+    shop = request.args.get('shop') or session.get('shop')
+    if not shop:
+        return jsonify({'error': 'Missing shop parameter'}), 400
+
+    try:
+        shop_data = db.get_shop(shop)
+        access_token = shop_data.get('access_token')
+        if not access_token:
+            return jsonify({'error': 'Shop not authenticated'}), 401
+
+        company_id = shop_data.get('company_id')
+        sync_time = datetime.utcnow()
+        total_saved = 0
+        cursor = None
+        all_ids = []
+
+        existing_meta = db.get_articles_meta_for_shop(shop)
+        existing_ids_before = set(existing_meta.keys())
+
+        bulk_articles = []
+        previous_sync_time = db.get_previous_articles_sync_time(shop)
+        while True:
+            result = get_articles(shop, access_token, cursor=cursor, limit=100)
+            articles = result.get('articles', [])
+            if articles:
+                upsert_batch = []
+                for a in articles:
+                    a['company_id'] = company_id
+                    aid = str(a.get('id'))
+                    prev = existing_meta.get(aid)
+                    # preserve existing chunk_ids by not overwriting when unchanged
+                    if prev and prev.get('chunk_ids') is not None:
+                        a['chunk_ids'] = prev['chunk_ids']
+                    upsert_batch.append(a)
+                    bulk_articles.append(a)
+
+                if upsert_batch:
+                    db.save_articles(shop, upsert_batch, company_id=company_id, sync_time=sync_time)
+                    total_saved += len(upsert_batch)
+                all_ids.extend([str(a.get('id')) for a in articles])
+            if not result.get('has_next'):
+                break
+            cursor = result.get('end_cursor')
+
+        # Bulk third-party sync for all fetched articles (create/update detection is handled on their side)
+        if bulk_articles:
+            prev_sync_iso = previous_sync_time.isoformat() if previous_sync_time else None
+            _call_third_party_articles_bulk(company_id, bulk_articles, prev_sync_time=prev_sync_iso)
+
+        # Determine deletions (anything existing not in fetched ids)
+        to_delete_ids = list(existing_ids_before - set(all_ids))
+        # Call third-party delete for each, before DB delete
+        for aid in to_delete_ids:
+            _call_third_party_article_delete(company_id, aid)
+
+        deleted_count = db.delete_articles_not_in_ids(shop, all_ids)
+
+        # Get updated counts after sync
+        synced_count = db.get_articles_count(shop)
+        total_count = get_total_articles_count(shop, access_token)
+
+        return jsonify({
+            'status': 'success', 
+            'saved': total_saved, 
+            'deleted': deleted_count, 
+            'last_sync_time': sync_time.isoformat(),
+            'synced_count': synced_count,
+            'total_count': total_count
+        }), 200
+    except Exception as e:
+        logger.error(f"Error syncing articles for {shop}: {str(e)}")
+        return jsonify({'error': 'Failed to sync articles'}), 500
+
+def public_dashboard():
+    """Public dashboard page that shows the same content as regular dashboard but without store info"""
+    # Get company_id from URL (this will be provided by AeroChat)
+    company_id = request.args.get('company_id')
+    
+    logger.info(f"Public dashboard accessed - Company ID: {company_id}")
+    
+    if not company_id:
+        logger.error("Public dashboard accessed without company_id")
+        return jsonify({'error': 'Company ID is required'}), 400
+    
+    # Find shop data by company_id
+    shop_data = db.get_shop_by_company_id(company_id)
+    
+    if not shop_data:
+        logger.error(f"No shop data found for company_id: {company_id}")
+        return jsonify({'error': 'Shop not found for this company'}), 404
+    
+    shop_domain = shop_data.get('store_url', 'unknown')
+    store_name = shop_data.get('shop_name', 'Your Store')
+    
+    # Get counts for dashboard
+    pages_synced = db.get_pages_count(shop_domain)
+    blogs_synced = db.get_articles_count(shop_domain)
+    products_count = db.get_products_count(shop_domain)
+    collections_count = db.get_collections_count(shop_domain)
+    
+    # Get total counts from Shopify store if we have access token
+    pages_total = 0
+    blogs_total = 0
+    if shop_data.get('access_token'):
+        pages_total = get_total_pages_count(shop_domain, shop_data.get('access_token'))
+        blogs_total = get_total_articles_count(shop_domain, shop_data.get('access_token'))
+    
+    return render_template(
+        'public_dashboard.html',
+        company_id=company_id,
+        shop_domain=shop_domain,
+        store_name=store_name,
+        pages_synced=pages_synced,
+        pages_total=pages_total,
+        blogs_synced=blogs_synced,
+        blogs_total=blogs_total,
+        products_count=products_count,
+        collections_count=collections_count
+    )
+
+def get_store_info():
+    """API endpoint to get store information by company_id"""
+    company_id = request.args.get('company_id')
+    
+    if not company_id:
+        return jsonify({'error': 'Company ID is required'}), 400
+    
+    try:
+        shop_data = db.get_shop_by_company_id(company_id)
+        
+        if not shop_data:
+            return jsonify({'error': 'Shop not found for this company'}), 404
+        
+        # Get counts for dashboard
+        shop_domain = shop_data.get('store_url', 'unknown')
+        shop_domain = shop_domain+'.myshopify.com'
+        pages_synced = db.get_pages_count(shop_domain)
+        blogs_synced = db.get_articles_count(shop_domain)
+        products_count = db.get_products_count(shop_domain)
+        collections_count = db.get_collections_count(shop_domain)
+        
+        # Get total counts from Shopify store if we have access token
+        pages_total = 0
+        blogs_total = 0
+        if shop_data.get('access_token'):
+            pages_total = get_total_pages_count(shop_domain, shop_data.get('access_token'))
+            blogs_total = get_total_articles_count(shop_domain, shop_data.get('access_token'))
+        
+        return jsonify({
+            'status': 'success',
+            'data': {
+                'company_id': company_id,
+                'shop_domain': shop_domain,
+                'store_name': shop_data.get('shop_name', 'Your Store'),
+                'store_url': shop_data.get('store_url', ''),
+                'pages_synced': pages_synced,
+                'pages_total': pages_total,
+                'blogs_synced': blogs_synced,
+                'blogs_total': blogs_total,
+                'products_count': products_count,
+                'collections_count': collections_count
+            }
+        })
+        
+    except Exception as e:
+        logger.error(f"Error getting store info for company_id {company_id}: {str(e)}")
+        return jsonify({'error': 'Failed to get store information'}), 500
