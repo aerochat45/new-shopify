@@ -2,7 +2,7 @@
 
 client_id = "9245b3af044f843540f65b7da58b6dca"
 name = "AeroChat-v3"
-application_url = "https://shopify-v3.onrender.com"
+application_url = "https://aerochat-v1.onrender.com"
 embedded = false
 
 [webhooks]
@@ -15,4 +15,4 @@ optional_scopes = [ ]
 use_legacy_install_flow = false
 
 [auth]
-redirect_urls = [ "https://shopify-v3.onrender.com/oauth/callback" ]
+redirect_urls = [ "https://aerochat-v1.onrender.com/oauth/callback" ]

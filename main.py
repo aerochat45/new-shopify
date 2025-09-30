@@ -2,7 +2,7 @@
 from flask import Flask
 import os
 from config import logger, SECRET_KEY
-from routes import install, callback, check_subscription, home, debug_shop, fetch_pages, sync_pages, sync_articles, public_dashboard, get_store_info, get_app_embed_url
+from routes import install, callback, check_subscription, home, debug_shop, fetch_pages, sync_pages, sync_articles, public_dashboard, get_store_info, get_app_embed_url, api_initial_sync
 from webhook_routes import uninstall_webhook, subscription_webhook
 from flask_cors import CORS  # <-- add this
 app = Flask(__name__)
@@ -23,6 +23,7 @@ app.route('/sync_articles')(sync_articles)
 app.route('/public_dashboard')(public_dashboard)
 app.route('/api/store_info')(get_store_info)
 app.route('/api/app_embed_url')(get_app_embed_url)
+app.route('/api/initial_sync')(api_initial_sync)
 
 # Register webhook routes
 app.route('/webhooks/uninstall', methods=['POST'])(uninstall_webhook)

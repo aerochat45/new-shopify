@@ -96,47 +96,8 @@ def callback():
         else:
             logger.warning(f"Failed to register uninstall webhook for shop: {shop}")
         
-        # Check if initial sync is needed
-        shop_data = db.get_shop(shop)
-        if not shop_data.get('initial_sync_completed', False):
-            logger.info(f"Starting initial sync for shop: {shop}")
-            
-            # Get company_id for the shop (this should be available after shop details are fetched)
-            company_id = shop_data.get('company_id')
-            if not company_id:
-                # Try to get company_id from third-party API
-                try:
-                    company_check_response = requests.get(
-                        GET_COMPANY_ID_URL, 
-                        params={"store_url": shop},
-                        headers={"Content-Type": "application/json"},
-                        timeout=10
-                    )
-                    
-                    if company_check_response.status_code == 200:
-                        company_data = company_check_response.json()
-                        company_id = company_data.get('company_id')
-                        if company_id:
-                            # Update shop with company_id
-                            db.create_or_update_shop(shop, company_id=company_id)
-                            logger.info(f"Retrieved and saved company_id: {company_id} for shop: {shop}")
-                except Exception as e:
-                    logger.error(f"Failed to get company_id for initial sync: {str(e)}")
-            
-            # Perform initial sync if we have company_id
-            if company_id:
-                try:
-                    sync_result = initial_sync_pages_and_articles(shop, access_token, company_id)
-                    if sync_result['success']:
-                        logger.info(f"Initial sync completed successfully for {shop}: {sync_result['pages_saved']} pages, {sync_result['articles_saved']} articles")
-                    else:
-                        logger.error(f"Initial sync failed for {shop}: {sync_result.get('error', 'Unknown error')}")
-                except Exception as e:
-                    logger.error(f"Exception during initial sync for {shop}: {str(e)}")
-            else:
-                logger.warning(f"Skipping initial sync for {shop} - no company_id available")
-        else:
-            logger.info(f"Initial sync already completed for shop: {shop}")
+        # Log installation completion
+        logger.info(f"App installation completed for shop: {shop}")
         
         db.log_database_state()
         
@@ -916,3 +877,98 @@ def get_app_embed_url():
     except Exception as e:
         logger.error(f"Error generating app embed URL for company_id {company_id}: {str(e)}")
         return jsonify({'error': 'Failed to generate app embed URL'}), 500
+
+def api_initial_sync():
+    """API endpoint to trigger initial sync of pages and articles. Only runs if initial_sync_completed is False."""
+    shop = request.args.get('shop') or session.get('shop')
+    
+    if not shop:
+        return jsonify({'error': 'Missing shop parameter'}), 400
+    
+    try:
+        # Get shop data
+        shop_data = db.get_shop(shop)
+        if not shop_data:
+            return jsonify({'error': 'Shop not found'}), 404
+        
+        # Check if initial sync is already completed
+        initial_sync_completed = shop_data.get('initial_sync_completed', False)
+        
+        if initial_sync_completed:
+            logger.info(f"Initial sync already completed for shop: {shop}")
+            return jsonify({
+                'status': 'success',
+                'message': 'Initial sync already completed',
+                'initial_sync_completed': True,
+                'pages_saved': 0,
+                'articles_saved': 0
+            }), 200
+        
+        # Get access token
+        access_token = shop_data.get('access_token')
+        if not access_token:
+            return jsonify({'error': 'Shop not authenticated'}), 401
+        
+        # Get company_id
+        company_id = shop_data.get('company_id')
+        if not company_id:
+            # Try to get company_id from third-party API
+            try:
+                company_check_response = requests.get(
+                    GET_COMPANY_ID_URL, 
+                    params={"store_url": shop},
+                    headers={"Content-Type": "application/json"},
+                    timeout=10
+                )
+                
+                if company_check_response.status_code == 200:
+                    company_data = company_check_response.json()
+                    company_id = company_data.get('company_id')
+                    if company_id:
+                        # Update shop with company_id
+                        db.create_or_update_shop(shop, company_id=company_id)
+                        logger.info(f"Retrieved and saved company_id: {company_id} for shop: {shop}")
+                else:
+                    return jsonify({'error': 'Failed to get company_id from third-party API'}), 500
+            except Exception as e:
+                logger.error(f"Failed to get company_id for initial sync: {str(e)}")
+                return jsonify({'error': 'Failed to get company_id'}), 500
+        
+        # Perform initial sync
+        logger.info(f"Starting initial sync via API for shop: {shop}")
+        sync_result = initial_sync_pages_and_articles(shop, access_token, company_id)
+        
+        if sync_result['success']:
+            logger.info(f"Initial sync completed successfully via API for {shop}: {sync_result['pages_saved']} pages, {sync_result['articles_saved']} articles")
+            
+            response_data = {
+                'status': 'success',
+                'message': 'Initial sync completed successfully',
+                'initial_sync_completed': True,
+                'pages_saved': sync_result['pages_saved'],
+                'articles_saved': sync_result['articles_saved'],
+                'sync_time': sync_result['sync_time']
+            }
+            
+            # Include errors if any
+            if sync_result.get('errors'):
+                response_data['warnings'] = sync_result['errors']
+            
+            return jsonify(response_data), 200
+        else:
+            logger.error(f"Initial sync failed via API for {shop}: {sync_result.get('error', 'Unknown error')}")
+            return jsonify({
+                'status': 'error',
+                'message': 'Initial sync failed',
+                'error': sync_result.get('error', 'Unknown error'),
+                'initial_sync_completed': False
+            }), 500
+        
+    except Exception as e:
+        logger.error(f"Error in initial sync API for shop {shop}: {str(e)}")
+        return jsonify({
+            'status': 'error',
+            'message': 'Internal server error during initial sync',
+            'error': str(e),
+            'initial_sync_completed': False
+        }), 500
