@@ -109,7 +109,7 @@ def subscription_webhook():
         
         plan_name = subscription.get('name', 'Unknown').strip()
         
-        # Extract interval from lineItems if available; otherwise fall back to DB value
+        # Extract interval from lineItems if available
         interval = 'unknown'
         line_items = subscription.get('lineItems', [])
         print(f"Line items: {line_items}")
