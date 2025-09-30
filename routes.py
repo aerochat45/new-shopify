@@ -7,6 +7,7 @@ from database import db
 from utils import get_shop_details, get_active_subscriptions, get_pages, get_articles, get_total_pages_count, get_total_articles_count, get_total_products_count, get_total_collections_count
 from webhooks import register_subscription_webhook, register_uninstall_webhook
 from datetime import datetime
+import time
 def install():
     shop = request.args.get('shop')
     logger.info(f"Install request received for shop: {shop}")
@@ -176,6 +177,8 @@ def home():
     logger.info(f"Checking company ID for store: {store_url}")
     
     try:
+        # Small delay to allow third-party record creation to finish on first load
+        time.sleep(3)
         company_check_response = requests.get(
             GET_COMPANY_ID_URL, 
             params={"store_url": shop_domain},
