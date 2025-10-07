@@ -66,11 +66,21 @@ def callback():
         
         # Get shop details
         shop_details = get_shop_details(shop, access_token)
+        email = shop_details.get('email')
         
-        # Update shop record with all details
+        # Check if email is already associated with another store
+        if email:
+            existing_shop = db.get_shop_by_email(email, exclude_shop_domain=shop)
+            if existing_shop:
+                logger.warning(f"Email {email} is already associated with another store: {existing_shop.get('shop_domain')}")
+                return render_template('duplicate_email_error.html', 
+                                     email=email, 
+                                     existing_shop=existing_shop)
+        
+        # Update shop record with all details (only if no duplicate email found)
         update_data = {
             'access_token': access_token,
-            'email': shop_details.get('email'),
+            'email': email,
             'shop_id': shop_details.get('id'),
             'shop_name': shop_details.get('name')
         }
@@ -125,18 +135,6 @@ def check_subscription():
         
         if not active_subscriptions:
             logger.info(f"No active subscriptions found for shop: {shop}")
-            
-            # Check if email is already associated with another store
-            email = shop_data.get('email')
-            if email:
-                existing_shop = db.get_shop_by_email(email, exclude_shop_domain=shop)
-                if existing_shop:
-                    logger.warning(f"Email {email} is already associated with another store: {existing_shop.get('shop_domain')}")
-                    return render_template('duplicate_email_error.html', 
-                                         email=email, 
-                                         existing_shop=existing_shop)
-            
-            # If no duplicate email found, proceed to pricing plans
             store_handle = shop.replace('.myshopify.com', '')
             plan_selection_url = f'https://admin.shopify.com/store/{store_handle}/charges/{APP_HANDLE}/pricing_plans'
             
