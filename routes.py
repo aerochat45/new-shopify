@@ -17,9 +17,6 @@ def install():
         return jsonify({'error': 'Shop parameter is required'}), 400
     
     try:
-        # Create initial shop record
-        db.create_or_update_shop(shop)
-        
         params = {
             'client_id': API_KEY,
             'scope': SCOPES,
@@ -73,6 +70,18 @@ def callback():
             existing_shop = db.get_shop_by_email(email, exclude_shop_domain=shop)
             if existing_shop:
                 logger.warning(f"Email {email} is already associated with another store: {existing_shop.get('shop_domain')}")
+                # Best-effort: revoke the access token so the app is removed from the store immediately
+                try:
+                    revoke_url = f'https://{shop}/admin/oauth/revoke'
+                    headers = {
+                        'X-Shopify-Access-Token': access_token,
+                        'Content-Type': 'application/json'
+                    }
+                    revoke_payload = { 'client_id': API_KEY }
+                    revoke_resp = requests.post(revoke_url, json=revoke_payload, headers=headers, timeout=10)
+                    logger.info(f"Token revoke attempt status: {revoke_resp.status_code} for shop {shop}")
+                except Exception as revoke_err:
+                    logger.warning(f"Failed to revoke access token for {shop}: {str(revoke_err)}")
                 return render_template('duplicate_email_error.html', 
                                      email=email, 
                                      existing_shop=existing_shop)
