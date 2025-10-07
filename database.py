@@ -233,6 +233,46 @@ class ShopifyAppDatabase:
             finally:
                 session.close()
 
+    def get_shop_by_email(self, email, exclude_shop_domain=None):
+        """Get shop record by email, optionally excluding a specific shop domain"""
+        with self.lock:
+            session = self._get_session()
+            try:
+                query = session.query(Shop).filter_by(email=email)
+                
+                # Exclude the current shop if specified
+                if exclude_shop_domain:
+                    query = query.filter(Shop.shop_domain != exclude_shop_domain)
+                
+                shop = query.first()
+                
+                if shop:
+                    # Convert to dictionary to match original interface
+                    shop_data = {
+                        'shop_domain': shop.shop_domain,
+                        'shop_id': shop.shop_id,
+                        'shop_name': shop.shop_name,
+                        'email': shop.email,
+                        'access_token': shop.access_token,
+                        'store_url': shop.store_url,
+                        'company_id': shop.company_id,
+                        'status': shop.status,
+                        'initial_sync_completed': shop.initial_sync_completed,
+                        'created_at': shop.created_at.isoformat() if shop.created_at else None,
+                        'updated_at': shop.updated_at.isoformat() if shop.updated_at else None
+                    }
+                else:
+                    shop_data = {}
+                
+                logger.info(f"Retrieved shop data by email {email} (excluding {exclude_shop_domain}): {bool(shop_data)}")
+                return shop_data
+                
+            except Exception as e:
+                logger.error(f"Error retrieving shop by email {email}: {str(e)}")
+                return {}
+            finally:
+                session.close()
+
     def create_or_update_subscription(self, shop_domain, subscription_data):
         """Create or update subscription record"""
         with self.lock:

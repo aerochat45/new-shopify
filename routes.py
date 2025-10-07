@@ -125,6 +125,18 @@ def check_subscription():
         
         if not active_subscriptions:
             logger.info(f"No active subscriptions found for shop: {shop}")
+            
+            # Check if email is already associated with another store
+            email = shop_data.get('email')
+            if email:
+                existing_shop = db.get_shop_by_email(email, exclude_shop_domain=shop)
+                if existing_shop:
+                    logger.warning(f"Email {email} is already associated with another store: {existing_shop.get('shop_domain')}")
+                    return render_template('duplicate_email_error.html', 
+                                         email=email, 
+                                         existing_shop=existing_shop)
+            
+            # If no duplicate email found, proceed to pricing plans
             store_handle = shop.replace('.myshopify.com', '')
             plan_selection_url = f'https://admin.shopify.com/store/{store_handle}/charges/{APP_HANDLE}/pricing_plans'
             
