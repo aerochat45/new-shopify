@@ -218,6 +218,7 @@ def home():
                 logger.info(f"Company ID found: {company_id}")
                 #####
                 try:
+                    access_token = shop_data.get('access_token')
                     script_id = get_aerochat_script_id(shop_domain)
                     if script_id:
                         # Save as Shopify metafield
