@@ -899,7 +899,7 @@ def get_app_embed_url():
         
         # Generate the app embed block enable URL
         # Format: https://admin.shopify.com/store/{store_handle}/themes/current/editor?context=apps&activateAppId={APP_API_KEY}/{APP_EMBED_HANDLE}
-        app_embed_url = f"https://admin.shopify.com/store/{store_handle}/themes/current/editor?context=apps&activateAppId={API_KEY}/aerochat"
+        app_embed_url = f"https://admin.shopify.com/store/{store_handle}/themes/current/editor?context=apps&activateAppId={API_KEY}/aerochat-embed"
         
         logger.info(f"Generated app embed URL for company_id {company_id}: {app_embed_url}")
         

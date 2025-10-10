@@ -1,4 +1,11 @@
-name = "aerochat"
+name = "AeroChat Embed"
+
+uid = "3f4a873b-32e1-a1ee-2f6c-a6d6166b1a9ed5e3ece1"
+
 type = "theme"
-uid = "8fe5767d-2778-f4cc-de6c-ba9d23d64fcf69345969"
+handle = "aerochat"
+
+[[blocks]]
+type = "chat-widget"
+
 
