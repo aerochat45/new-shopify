@@ -1,10 +1,21 @@
-<!-- Hidden div (optional for metafield approach; remove if using direct fetch) -->
+{% comment %}
+  AeroChat Widget - API Loader Approach
+  This block uses JavaScript to fetch the script URL from AeroChat API.
+  Includes localStorage caching for performance.
+  
+  For a faster, metafield-based approach, use the "AeroChat Widget (Metafield)" block instead.
+{% endcomment %}
 
 {% schema %}
 {
-  "name": "Aerochat Embed",
+  "name": "AeroChat Widget (API Loader)",
   "target": "body",
   "javascript": "chatbox-loader.js",
-  "settings": []
+  "settings": [
+    {
+      "type": "paragraph",
+      "content": "This block loads the AeroChat widget by making an API call. Uses localStorage caching to improve performance."
+    }
+  ]
 }
 {% endschema %}

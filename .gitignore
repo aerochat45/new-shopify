@@ -78,3 +78,7 @@ node_modules/
 # Build outputs
 build/
 dist/
+
+
+# normal md files
+*.md

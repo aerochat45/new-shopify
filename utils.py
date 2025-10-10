@@ -444,3 +444,95 @@ def verify_shopify_hmac(query_params, hmac_to_verify):
     except Exception as e:
         logger.error(f"Error verifying HMAC: {str(e)}")
         return False
+
+def get_aerochat_script_id(shop_domain):
+    """
+    Fetch the AeroChat script_id for a shop from the AeroChat API.
+    
+    :param shop_domain: merchant's shop domain, e.g. "example.myshopify.com"
+    :return: script_id string or None if not found
+    """
+    logger.info(f"Fetching AeroChat script_id for: {shop_domain}")
+    try:
+        from config import THIRD_PARTY_BASE
+        from urllib.parse import urlparse, parse_qs
+        
+        endpoint = f'{THIRD_PARTY_BASE}/chat/api/v1/get-script-url'
+        response = requests.post(
+            endpoint,
+            json={'shop': shop_domain},
+            headers={'Content-Type': 'application/json'},
+            timeout=10
+        )
+        
+        logger.info(f"Script ID API response status: {response.status_code}")
+        
+        if response.status_code == 200:
+            data = response.json()
+            script_url = data.get('url', '')
+            
+            # Extract script_id from URL
+            # URL format: https://app.aerochat.ai/static/shopify-chatbox.js?script={script_key}&color={color}
+            if script_url:
+                parsed_url = urlparse(script_url)
+                query_params = parse_qs(parsed_url.query)
+                script_id = query_params.get('script', [None])[0]
+                
+                if script_id:
+                    logger.info(f"Successfully extracted script_id: {script_id} for {shop_domain}")
+                    return script_id
+                else:
+                    logger.warning(f"Script parameter not found in URL: {script_url}")
+                    return None
+            else:
+                logger.warning(f"Script URL is empty")
+                return None
+        else:
+            logger.error(f"Failed to get script_id: {response.text}")
+            return None
+            
+    except Exception as e:
+        logger.error(f"Exception getting script_id for {shop_domain}: {str(e)}")
+        return None
+
+def save_aerochat_script_id(shop, access_token, script_id):
+    """
+    Save the AeroChat script_id as a shop metafield in Shopify.
+    
+    :param shop: merchant's shop domain, e.g. "example.myshopify.com"
+    :param access_token: OAuth access token for that merchant
+    :param script_id: unique AeroChat script id, e.g. "69dad98387e71b4e101a0167bdcbfca5"
+    :return: metafield data dict or None if failed
+    """
+    logger.info(f"Saving AeroChat script_id metafield for: {shop}")
+    try:
+        url = f"https://{shop}/admin/api/2025-01/metafields.json"
+
+        headers = {
+            "Content-Type": "application/json",
+            "X-Shopify-Access-Token": access_token
+        }
+
+        payload = {
+            "metafield": {
+                "namespace": "aerochat",
+                "key": "script_id",
+                "type": "single_line_text_field",
+                "value": script_id,
+                "owner_resource": "shop"
+            }
+        }
+
+        response = requests.post(url, json=payload, headers=headers, timeout=10)
+        
+        if response.status_code == 201:
+            metafield_data = response.json().get("metafield")
+            logger.info(f"Successfully saved metafield for {shop}: {metafield_data.get('id')}")
+            return metafield_data
+        else:
+            logger.error(f"Failed to save metafield for {shop}. Status: {response.status_code}, Response: {response.text}")
+            return None
+            
+    except Exception as e:
+        logger.error(f"Exception saving metafield for {shop}: {str(e)}")
+        return None

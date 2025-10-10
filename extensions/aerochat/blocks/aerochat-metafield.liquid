@@ -1,0 +1,42 @@
+{% comment %}
+  AeroChat Widget - Metafield Approach
+  This block uses the script_id stored in Shopify metafields for faster loading.
+  No API calls needed - the script loads immediately with the page.
+{% endcomment %}
+
+{% if shop.metafields.aerochat.script_id %}
+  {% assign color_hex = block.settings.widget_color | remove: '#' %}
+  <script 
+    src="https://app.aerochat.ai/static/shopify-chatbox.js?script={{ shop.metafields.aerochat.script_id }}&color={{ color_hex }}"
+    async>
+  </script>
+{% else %}
+  {% comment %}
+    Fallback: If metafield is not set, you could optionally use the JS loader approach
+    or display a setup message
+  {% endcomment %}
+  <script>
+    console.warn('AeroChat: script_id metafield not found. Please reinstall the app or contact support.');
+  </script>
+{% endif %}
+
+{% schema %}
+{
+  "name": "AeroChat Widget (Metafield)",
+  "target": "body",
+  "settings": [
+    {
+      "type": "paragraph",
+      "content": "This block loads the AeroChat widget using a direct script tag. Faster and more reliable than API-based loading."
+    },
+    {
+      "type": "color",
+      "id": "widget_color",
+      "label": "Widget Color",
+      "default": "#7C3AED",
+      "info": "Choose the color for your chat widget button"
+    }
+  ]
+}
+{% endschema %}
+

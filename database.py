@@ -22,6 +22,7 @@ class Shop(Base):
     access_token = Column(Text)
     store_url = Column(String(255))
     company_id = Column(String(100))
+    script_id = Column(String(100))  # AeroChat script ID for metafield approach
     status = Column(String(50), default='active')
     initial_sync_completed = Column(Boolean, default=False)
     created_at = Column(DateTime, default=datetime.now)
@@ -182,6 +183,7 @@ class ShopifyAppDatabase:
                         'access_token': shop.access_token,
                         'store_url': shop.store_url,
                         'company_id': shop.company_id,
+                        'script_id': shop.script_id,
                         'status': shop.status,
                         'initial_sync_completed': shop.initial_sync_completed,
                         'created_at': shop.created_at.isoformat() if shop.created_at else None,
@@ -216,6 +218,7 @@ class ShopifyAppDatabase:
                         'access_token': shop.access_token,
                         'store_url': shop.store_url,
                         'company_id': shop.company_id,
+                        'script_id': shop.script_id,
                         'status': shop.status,
                         'initial_sync_completed': shop.initial_sync_completed,
                         'created_at': shop.created_at.isoformat() if shop.created_at else None,
@@ -256,6 +259,7 @@ class ShopifyAppDatabase:
                         'access_token': shop.access_token,
                         'store_url': shop.store_url,
                         'company_id': shop.company_id,
+                        'script_id': shop.script_id,
                         'status': shop.status,
                         'initial_sync_completed': shop.initial_sync_completed,
                         'created_at': shop.created_at.isoformat() if shop.created_at else None,
