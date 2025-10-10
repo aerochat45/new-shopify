@@ -5,7 +5,6 @@ uid = "3f4a873b-32e1-a1ee-2f6c-a6d6166b1a9ed5e3ece1"
 type = "theme"
 handle = "aerochat"
 
-[[blocks]]
-type = "chat-widget"
+
 
 
