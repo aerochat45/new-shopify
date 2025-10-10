@@ -7,9 +7,11 @@
 {% if shop.metafields.aerochat.script_id %}
   {% assign color_hex = block.settings.widget_color | remove: '#' %}
   <script 
-    src="https://app.aerochat.ai/static/shopify-chatbox.js?script={{ shop.metafields.aerochat.script_id }}&color={{ color_hex }}"
-    async>
-  </script>
+    src="https://app.aerochat.ai/static/chatbox.js"
+    data-src="https://app.aerochat.ai/chat/script/{{ shop.metafields.aerochat.script_id }}"
+    color="">
+</script>
+
 {% else %}
   {% comment %}
     Fallback: If metafield is not set, you could optionally use the JS loader approach

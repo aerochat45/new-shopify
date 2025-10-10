@@ -200,6 +200,20 @@ def home():
     try:
         # Small delay to allow third-party record creation to finish on first load
         time.sleep(3)
+        if shop_data.get('script_id') is None:
+            access_token = shop_data.get('access_token')
+            script_id = get_aerochat_script_id(shop_domain)
+            if script_id:
+                # Save as Shopify metafield
+                metafield_saved = save_aerochat_script_id(shop, access_token, script_id)
+                if metafield_saved:
+                    logger.info(f"Successfully saved script_id metafield for shop: {shop}")
+                    # Also save script_id in our database for reference
+                    db.create_or_update_shop(shop, script_id=script_id)
+                else:
+                    logger.warning(f"Failed to save script_id metafield for shop: {shop}")
+            else:
+                logger.warning(f"Could not fetch script_id for shop: {shop}")
         company_check_response = requests.get(
             GET_COMPANY_ID_URL, 
             params={"store_url": shop_domain},
@@ -217,22 +231,6 @@ def home():
             if company_id:
                 logger.info(f"Company ID found: {company_id}")
                 #####
-                try:
-                    access_token = shop_data.get('access_token')
-                    script_id = get_aerochat_script_id(shop_domain)
-                    if script_id:
-                        # Save as Shopify metafield
-                        metafield_saved = save_aerochat_script_id(shop, access_token, script_id)
-                        if metafield_saved:
-                            logger.info(f"Successfully saved script_id metafield for shop: {shop}")
-                            # Also save script_id in our database for reference
-                            db.create_or_update_shop(shop, script_id=script_id)
-                        else:
-                            logger.warning(f"Failed to save script_id metafield for shop: {shop}")
-                    else:
-                        logger.warning(f"Could not fetch script_id for shop: {shop}")
-                except Exception as e:
-                    logger.error(f"Error setting up script_id metafield for {shop}: {str(e)}")
                 # Update shop data with company ID
                 db.create_or_update_shop(shop_domain, company_id=company_id)
                 
