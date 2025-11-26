@@ -219,7 +219,7 @@ def home():
 
         # Retry company ID lookup a few times before showing store_not_found
         max_retries = 3
-        retry_delay_seconds = 3
+        retry_delay_seconds = 4
         last_status_code = None
 
         for attempt in range(1, max_retries + 1):
