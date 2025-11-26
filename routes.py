@@ -726,7 +726,8 @@ def initial_sync_pages_and_articles(shop, access_token, company_id):
                         
                         # Call third-party API for articles with timeout handling
                         try:
-                            _call_third_party_articles_bulk(company_id, articles, prev_sync_time=None)
+                            #_call_third_party_articles_bulk(company_id, articles, prev_sync_time=None)
+                            logger.info("Skipping third-party API call for articles")
                         except Exception as api_error:
                             logger.warning(f"Third-party API call failed for articles: {str(api_error)}")
                             sync_errors.append(f"Third-party API error for articles: {str(api_error)}")

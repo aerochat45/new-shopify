@@ -1,10 +1,10 @@
 # Learn more about configuring your app at https://shopify.dev/docs/apps/tools/cli/configuration
 
 client_id = "9245b3af044f843540f65b7da58b6dca"
-name = "AeroChat-v3"
+name = "AeroChat"
 application_url = "https://aerochat-v1.onrender.com"
 embedded = false
-
+handle = "aerochatapp"  # This is where you set your app handle
 [webhooks]
 api_version = "2025-07"
 

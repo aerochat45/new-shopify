@@ -370,7 +370,7 @@ def get_total_products_count(shop, access_token):
           }
         }
         '''
-        url = f'https://{shop}/admin/api/2025-01/graphql.json'
+        url = f'https://{shop}/admin/api/2025-07/graphql.json'
         headers = {
             'Content-Type': 'application/json',
             'X-Shopify-Access-Token': access_token
@@ -397,12 +397,12 @@ def get_total_collections_count(shop, access_token):
     try:
         query = '''
         query {
-            collectionsCount {
+            collectionsCount(limit: null) {
                 count
             }
             }
         '''
-        url = f'https://{shop}/admin/api/2025-01/graphql.json'
+        url = f'https://{shop}/admin/api/2025-07/graphql.json'
         headers = {
             'Content-Type': 'application/json',
             'X-Shopify-Access-Token': access_token
