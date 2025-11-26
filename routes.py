@@ -199,7 +199,9 @@ def home():
     
     try:
         # Small delay to allow third-party record creation to finish on first load
-        time.sleep(3)
+        time.sleep(5)
+
+        # Ensure script_id is saved if missing (existing behavior)
         if shop_data.get('script_id') is None:
             access_token = shop_data.get('access_token')
             script_id = get_aerochat_script_id(shop_domain)
@@ -214,99 +216,116 @@ def home():
                     logger.warning(f"Failed to save script_id metafield for shop: {shop}")
             else:
                 logger.warning(f"Could not fetch script_id for shop: {shop}")
-        company_check_response = requests.get(
-            GET_COMPANY_ID_URL, 
-            params={"store_url": shop_domain},
-            headers={"Content-Type": "application/json"},
-            timeout=10
-        )
-        
-        logger.info(f"Company ID check response status: {company_check_response.status_code}")
-        logger.info(f"Company ID check response: {company_check_response.text}")
-        
-        if company_check_response.status_code == 200:
-            company_data = company_check_response.json()
-            company_id = company_data.get('company_id')
+
+        # Retry company ID lookup a few times before showing store_not_found
+        max_retries = 3
+        retry_delay_seconds = 3
+        last_status_code = None
+
+        for attempt in range(1, max_retries + 1):
+            logger.info(f"Company ID check attempt {attempt}/{max_retries} for store: {store_url}")
+
+            company_check_response = requests.get(
+                GET_COMPANY_ID_URL, 
+                params={"store_url": shop_domain},
+                headers={"Content-Type": "application/json"},
+                timeout=10
+            )
             
-            if company_id:
-                logger.info(f"Company ID found: {company_id}")
-                #####
-                # Update shop data with company ID
-                db.create_or_update_shop(shop_domain, company_id=company_id)
+            last_status_code = company_check_response.status_code
+            logger.info(f"Company ID check response status: {company_check_response.status_code}")
+            logger.info(f"Company ID check response: {company_check_response.text}")
+            
+            if company_check_response.status_code == 200:
+                company_data = company_check_response.json()
+                company_id = company_data.get('company_id')
                 
-                # Check if initial sync is completed
-                initial_sync_completed = shop_data.get('initial_sync_completed', False)
-                logger.info(f"Initial sync status for {shop_domain}: {initial_sync_completed}")
-                
-                # Get counts for dashboard
-                pages_synced = db.get_pages_count(shop_domain)
-                blogs_synced = db.get_articles_count(shop_domain)
-                products_count = db.get_products_count(shop_domain)
-                collections_count = db.get_collections_count(shop_domain)
-                
-                # Get total counts from Shopify store
-                access_token = shop_data.get('access_token')
-                pages_total = get_total_pages_count(shop_domain, access_token) if access_token else 0
-                blogs_total = get_total_articles_count(shop_domain, access_token) if access_token else 0
-                
-                # Call autologin API and redirect to public page
-                try:
-                    autologin_response = requests.post(
-                        'https://app.aerochat.ai/api/autologin',
-                        json={'company_id': company_id},
-                        headers={'Content-Type': 'application/json'},
-                        timeout=10
-                    )
+                if company_id:
+                    logger.info(f"Company ID found: {company_id} on attempt {attempt}")
+                    #####
+                    # Update shop data with company ID
+                    db.create_or_update_shop(shop_domain, company_id=company_id)
                     
-                    if autologin_response.status_code == 200:
-                        autologin_data = autologin_response.json()
-                        if autologin_data.get('status') and autologin_data.get('auto_login_link'):
-                            logger.info(f"Autologin successful for company_id: {company_id}")
-                            
-                            # Store shop info in session for the public dashboard
-                            session['public_shop_domain'] = shop_domain
-                            session['public_store_name'] = shop_data.get('shop_name', store_url)
-                            session['public_company_id'] = company_id
-                            session['public_store_url'] = store_url
-                            
-                            # Redirect to the autologin link (without adding parameters)
-                            return redirect(autologin_data['auto_login_link'])
-                        else:
-                            logger.error(f"Autologin API returned invalid response: {autologin_data}")
-                    else:
-                        logger.error(f"Autologin API failed with status: {autologin_response.status_code}")
+                    # Check if initial sync is completed
+                    initial_sync_completed = shop_data.get('initial_sync_completed', False)
+                    logger.info(f"Initial sync status for {shop_domain}: {initial_sync_completed}")
+                    
+                    # Get counts for dashboard
+                    pages_synced = db.get_pages_count(shop_domain)
+                    blogs_synced = db.get_articles_count(shop_domain)
+                    products_count = db.get_products_count(shop_domain)
+                    collections_count = db.get_collections_count(shop_domain)
+                    
+                    # Get total counts from Shopify store
+                    access_token = shop_data.get('access_token')
+                    pages_total = get_total_pages_count(shop_domain, access_token) if access_token else 0
+                    blogs_total = get_total_articles_count(shop_domain, access_token) if access_token else 0
+                    
+                    # Call autologin API and redirect to public page
+                    try:
+                        autologin_response = requests.post(
+                            'https://app.aerochat.ai/api/autologin',
+                            json={'company_id': company_id},
+                            headers={'Content-Type': 'application/json'},
+                            timeout=10
+                        )
                         
-                except Exception as e:
-                    logger.error(f"Error calling autologin API: {str(e)}")
-                
-                # Fallback to dashboard if autologin fails
-                return render_template(
-                    'dashboard.html', 
-                    shop_domain=shop_domain,
-                    shop_data=shop_data, 
-                    email=email, 
-                    plan=plan, 
-                    store_url=store_url,
-                    company_id=company_id,
-                    pages_synced=pages_synced,
-                    pages_total=pages_total,
-                    blogs_synced=blogs_synced,
-                    blogs_total=blogs_total,
-                    products_count=products_count,
-                    collections_count=collections_count,
-                    initial_sync_completed=initial_sync_completed
-                )
+                        if autologin_response.status_code == 200:
+                            autologin_data = autologin_response.json()
+                            if autologin_data.get('status') and autologin_data.get('auto_login_link'):
+                                logger.info(f"Autologin successful for company_id: {company_id}")
+                                
+                                # Store shop info in session for the public dashboard
+                                session['public_shop_domain'] = shop_domain
+                                session['public_store_name'] = shop_data.get('shop_name', store_url)
+                                session['public_company_id'] = company_id
+                                session['public_store_url'] = store_url
+                                
+                                # Redirect to the autologin link (without adding parameters)
+                                return redirect(autologin_data['auto_login_link'])
+                            else:
+                                logger.error(f"Autologin API returned invalid response: {autologin_data}")
+                        else:
+                            logger.error(f"Autologin API failed with status: {autologin_response.status_code}")
+                            
+                    except Exception as e:
+                        logger.error(f"Error calling autologin API: {str(e)}")
+                    
+                    # Fallback to dashboard if autologin fails
+                    return render_template(
+                        'dashboard.html', 
+                        shop_domain=shop_domain,
+                        shop_data=shop_data, 
+                        email=email, 
+                        plan=plan, 
+                        store_url=store_url,
+                        company_id=company_id,
+                        pages_synced=pages_synced,
+                        pages_total=pages_total,
+                        blogs_synced=blogs_synced,
+                        blogs_total=blogs_total,
+                        products_count=products_count,
+                        collections_count=collections_count,
+                        initial_sync_completed=initial_sync_completed
+                    )
+                else:
+                    logger.warning(f"No company_id in successful response for store: {store_url} on attempt {attempt}")
             else:
-                logger.warning(f"No company_id in successful response for store: {store_url}")
+                logger.warning(f"Company ID API did not return 200 for store: {store_url} on attempt {attempt}")
+
+            # If not the last attempt, wait briefly and try again
+            if attempt < max_retries:
+                logger.info(f"Retrying company ID lookup for {store_url} after {retry_delay_seconds} seconds")
+                time.sleep(retry_delay_seconds)
         
-        # If we reach here, either API call failed or no company_id found
-        logger.error(f"Store not found in AeroChat or API call failed for: {store_url}")
+        # If we reach here, either API calls failed or no company_id found after retries
+        logger.error(f"Store not found in AeroChat or API call failed after {max_retries} attempts for: {store_url}")
         
         return render_template(
             'store_not_found.html', 
             store_url=store_url, 
             shop_domain=shop_domain,
-            status_code=company_check_response.status_code
+            status_code=last_status_code
         )
         
     except requests.exceptions.Timeout:
