@@ -121,7 +121,7 @@ def callback():
         # Log installation completion
         logger.info(f"App installation completed for shop: {shop}")
         
-        db.log_database_state()
+        #db.log_database_state()
         
         return redirect(url_for('check_subscription', shop=shop))
         

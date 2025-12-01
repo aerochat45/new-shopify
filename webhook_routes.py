@@ -181,7 +181,7 @@ def subscription_webhook():
             logger.error(f'Error calling third-party API: {str(e)}')
 
         # Log final database state
-        db.log_database_state()
+        #db.log_database_state()
 
         return jsonify({'status': 'success'}), 200
         
