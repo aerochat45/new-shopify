@@ -193,6 +193,14 @@ def home():
         logger.error(f"No shop data found in database for: {shop_domain}")
         return redirect(url_for('install', shop=shop_domain))
     
+    # Verify active subscription before proceeding
+    access_token = shop_data.get('access_token')
+    if access_token:
+        active_subscriptions = get_active_subscriptions(shop_domain, access_token)
+        if not active_subscriptions:
+            logger.info(f"No active subscriptions found for shop: {shop_domain}, redirecting to plan selection")
+            return redirect(url_for('check_subscription', shop=shop_domain))
+    
     # Check company ID with third-party API before showing home page
     store_url = shop_data.get('store_url', shop_domain.replace('.myshopify.com', ''))
     logger.info(f"Checking company ID for store: {store_url}")
