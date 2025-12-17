@@ -120,7 +120,12 @@ def subscription_webhook():
 
         # Update subscription in database
         db.create_or_update_subscription(shop_domain, subscription)
-
+        ## To check if the subscription is active
+        status = (subscription.get('status') or '').upper()
+        logger.info(f"Subscription status: {status}")
+        if status in ['DECLINED', 'PENDING', 'EXPIRED', 'CANCELLED']:
+            logger.info(f"Skipping third-party API call because subscription status is {status}")
+            return jsonify({'status': 'ignored_non_active_subscription'}), 200
         # Prepare data for third-party API
         email = shop_data.get('email', 'support+test52@aerochat.ai')
         print(f"Email: {email}")
