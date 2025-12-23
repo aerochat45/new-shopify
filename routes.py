@@ -8,8 +8,21 @@ from utils import get_shop_details, get_active_subscriptions, get_pages, get_art
 from webhooks import register_subscription_webhook, register_uninstall_webhook
 from datetime import datetime
 import time
+import base64
+def decode_shop(encoded_shop: str) -> str:
+    padding = "=" * (-len(encoded_shop) % 4)
+    return base64.urlsafe_b64decode(encoded_shop + padding).decode()
 def install():
     shop = request.args.get('shop')
+    # 🔹 NEW: fallback to encoded shop (email flow)
+    if not shop:
+        shop_enc = request.args.get("shop_enc")
+        if shop_enc:
+            try:
+                shop = decode_shop(shop_enc)
+            except Exception:
+                logger.error("Invalid shop_enc value")
+                return jsonify({"error": "Invalid shop parameter"}), 400
     logger.info(f"Install request received for shop: {shop}")
     
     if not shop:
