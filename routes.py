@@ -12,6 +12,20 @@ import base64
 def decode_shop(encoded_shop: str) -> str:
     padding = "=" * (-len(encoded_shop) % 4)
     return base64.urlsafe_b64decode(encoded_shop + padding).decode()
+
+def connect():
+    shop = request.args.get('shop')
+    shop_enc = request.args.get('shop_enc')
+    
+    # Build query parameters for redirect
+    params = {}
+    if shop:
+        params['shop'] = shop
+    if shop_enc:
+        params['shop_enc'] = shop_enc
+    
+    # Redirect to install route with the same parameters
+    return redirect(url_for('install', **params))
 def install():
     shop = request.args.get('shop')
     # 🔹 NEW: fallback to encoded shop (email flow)
