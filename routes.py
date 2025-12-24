@@ -392,20 +392,20 @@ def home():
         time.sleep(5)
 
         # Ensure script_id is saved if missing (existing behavior)
-        if shop_data.get('script_id') is None:
-            access_token = shop_data.get('access_token')
-            script_id = get_aerochat_script_id(shop_domain)
-            if script_id:
-                # Save as Shopify metafield
-                metafield_saved = save_aerochat_script_id(shop_domain, access_token, script_id)
-                if metafield_saved:
-                    logger.info(f"Successfully saved script_id metafield for shop: {shop_domain}")
-                # Also save script_id in our database for reference
-                db.create_or_update_shop(shop_domain, script_id=script_id)
-            else:
-                logger.warning(f"Failed to save script_id metafield for shop: {shop_domain}")
-        else:
-            logger.warning(f"Could not fetch script_id for shop: {shop_domain}")
+        # if shop_data.get('script_id') is None:
+        #     access_token = shop_data.get('access_token')
+        #     script_id = get_aerochat_script_id(shop_domain)
+        #     if script_id:
+        #         # Save as Shopify metafield
+        #         metafield_saved = save_aerochat_script_id(shop_domain, access_token, script_id)
+        #         if metafield_saved:
+        #             logger.info(f"Successfully saved script_id metafield for shop: {shop_domain}")
+        #         # Also save script_id in our database for reference
+        #         db.create_or_update_shop(shop_domain, script_id=script_id)
+        #     else:
+        #         logger.warning(f"Failed to save script_id metafield for shop: {shop_domain}")
+        # else:
+        #     logger.warning(f"Could not fetch script_id for shop: {shop_domain}")
 
         # Retry company ID lookup a few times before showing store_not_found
         max_retries = 3
@@ -433,16 +433,20 @@ def home():
                 if company_id:
                     logger.info(f"Company ID found: {company_id} on attempt {attempt}")
                     # save script id in our database
-                    script_id = get_aerochat_script_id(shop_domain)
-                    if script_id:
-                        metafield_saved = save_aerochat_script_id(shop_domain, access_token, script_id)
-                        if metafield_saved:
-                            logger.info(f"Successfully saved script_id metafield for shop: {shop_domain}")
+                    if shop_data.get('script_id') is None:
+                        script_id = get_aerochat_script_id(shop_domain)
+                        if script_id:
+                            access_token = shop_data.get('access_token')
+                            metafield_saved = save_aerochat_script_id(shop_domain, access_token, script_id)
+                            if metafield_saved:
+                                logger.info(f"Successfully saved script_id metafield for shop: {shop_domain}")
+                            else:
+                                logger.warning(f"Failed to save script_id metafield for shop: {shop_domain}")
+                            db.create_or_update_shop(shop_domain, script_id=script_id)
                         else:
-                            logger.warning(f"Failed to save script_id metafield for shop: {shop_domain}")
-                        db.create_or_update_shop(shop_domain, script_id=script_id)
+                            logger.warning(f"Failed to fetch script_id for shop: {shop_domain}")
                     else:
-                        logger.warning(f"Failed to save script_id metafield for shop: {shop_domain}")
+                        logger.info(f"Script ID already in DB: {shop_data.get('script_id')} for shop: {shop_domain}")
                     # Update shop data with company ID
                     db.create_or_update_shop(shop_domain, company_id=company_id)
 
