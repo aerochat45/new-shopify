@@ -4,7 +4,7 @@ import requests
 from urllib.parse import urlencode
 from config import logger, API_KEY, API_SECRET, SCOPES, REDIRECT_URI, APP_HANDLE, THIRD_PARTY_API_URL, GET_COMPANY_ID_URL, json
 from database import db
-from utils import get_shop_details, get_active_subscriptions, get_pages, get_articles, get_total_pages_count, get_total_articles_count, get_total_products_count, get_total_collections_count, get_aerochat_script_id, save_aerochat_script_id
+from utils import get_shop_details, get_active_subscriptions, get_pages, get_articles, get_total_pages_count, get_total_articles_count, get_total_products_count, get_total_collections_count, get_aerochat_script_id, save_aerochat_script_id, verify_shopify_hmac
 from webhooks import register_subscription_webhook, register_uninstall_webhook
 from datetime import datetime
 import time
@@ -16,15 +16,76 @@ def decode_shop(encoded_shop: str) -> str:
 def connect():
     shop = request.args.get('shop')
     shop_enc = request.args.get('shop_enc')
+    host = request.args.get('host')
+    hmac_param = request.args.get('hmac')
     
-    # Build query parameters for redirect
-    params = {}
-    if shop:
-        params['shop'] = shop
+    # Decode shop if needed
+    if not shop and shop_enc:
+        try:
+            shop = decode_shop(shop_enc)
+        except Exception:
+            logger.error("Invalid shop_enc value in connect")
+            return jsonify({"error": "Invalid shop parameter"}), 400
+    
+    if not shop:
+        return jsonify({"error": "Shop parameter is required"}), 400
+    
+    # SECURITY: If HMAC is present, verify it and trust shop from URL
+    if hmac_param:
+        # Verify HMAC for security
+        query_params = dict(request.args)
+        if not verify_shopify_hmac(query_params, hmac_param):
+            logger.error(f"Invalid HMAC verification failed for shop: {shop}")
+            return jsonify({'error': 'Invalid HMAC verification'}), 401
+        
+        # HMAC verified - trust shop from URL
+        logger.info(f"HMAC verified for shop: {shop}, allowing direct access")
+        shop_domain = shop
+        
+        # Verify shop exists in DB with access_token
+        shop_data = db.get_shop(shop_domain)
+        if shop_data and shop_data.get('access_token'):
+            # Already installed - redirect to home with preserved params
+            params = {'shop': shop_domain}
+            if host:
+                params['host'] = host
+            if hmac_param:
+                params['hmac'] = hmac_param
+            return redirect(url_for('home', **params))
+        else:
+            # Not installed - go through install flow
+            params = {'shop': shop_domain}
+            if shop_enc:
+                params['shop_enc'] = shop_enc
+            return redirect(url_for('install', **params))
+    
+    # No HMAC - use session shop for security (prevent session hijacking)
+    session_shop = session.get('shop')
+    
+    if session_shop:
+        # Verify session shop exists in DB with access_token
+        shop_data = db.get_shop(session_shop)
+        if shop_data and shop_data.get('access_token'):
+            # Session shop is valid - use it (ignore URL shop for security)
+            logger.info(f"Using session shop: {session_shop} (HMAC not present)")
+            params = {'shop': session_shop}
+            if host:
+                params['host'] = host
+            return redirect(url_for('home', **params))
+        else:
+            # Session shop not valid - clear session and go to install
+            logger.warning(f"Session shop {session_shop} not found in DB or no access_token")
+            session.clear()
+            params = {'shop': shop}
+            if shop_enc:
+                params['shop_enc'] = shop_enc
+            return redirect(url_for('install', **params))
+    
+    # No session and no HMAC - must go through install (OAuth will verify HMAC)
+    logger.info(f"No session or HMAC, redirecting to install for shop: {shop}")
+    params = {'shop': shop}
     if shop_enc:
         params['shop_enc'] = shop_enc
-    
-    # Redirect to install route with the same parameters
     return redirect(url_for('install', **params))
 def install():
     shop = request.args.get('shop')
@@ -200,19 +261,42 @@ def home():
     # Check if this is a Shopify embedded app request
     shop = request.args.get('shop')
     host = request.args.get('host')
-    hmac = request.args.get('hmac')
+    hmac_param = request.args.get('hmac')
     
-    logger.info(f"Home page accessed - Shop: {shop}, Host: {host}, HMAC: {hmac}")
+    logger.info(f"Home page accessed - Shop: {shop}, Host: {host}, HMAC: {bool(hmac_param)}")
     logger.info(f"Session data: {dict(session)}")
     
-    # Get data from session and database
-    shop_domain = session.get('shop',shop)
-    plan = session.get('plan', 'No Plan Selected')
-    email = session.get('email', 'No Email Provided')
+    # SECURITY: Determine shop_domain based on HMAC verification
+    session_shop = session.get('shop')
     
-    logger.info(f"Loading home page for shop: {shop_domain}")
+    if hmac_param:
+        # HMAC present - verify it and trust shop from URL
+        query_params = dict(request.args)
+        if not verify_shopify_hmac(query_params, hmac_param):
+            logger.error(f"Invalid HMAC verification failed for shop: {shop}")
+            return jsonify({'error': 'Invalid HMAC verification'}), 401
+        
+        # HMAC verified - use shop from URL (trusted)
+        if shop:
+            shop_domain = shop
+            logger.info(f"HMAC verified, using shop from URL: {shop_domain}")
+        else:
+            logger.error("HMAC present but no shop parameter")
+            return jsonify({'error': 'Shop parameter required'}), 400
+    else:
+        # No HMAC - use shop from session (more secure than URL)
+        if session_shop:
+            shop_domain = session_shop
+            logger.info(f"No HMAC, using shop from session: {shop_domain}")
+        elif shop:
+            # Fallback to URL shop if no session (but less secure)
+            shop_domain = shop
+            logger.warning(f"No HMAC and no session, using shop from URL: {shop_domain}")
+        else:
+            logger.error("No shop found in session, URL, or HMAC")
+            return jsonify({'error': 'Shop parameter required'}), 400
     
-    # Get complete shop data from database
+    # SECURITY: Verify shop exists in database with access_token
     shop_data = db.get_shop(shop_domain)
     logger.info(f"Shop data from database: {json.dumps(shop_data, indent=2, default=str)}")
     
@@ -220,17 +304,88 @@ def home():
         logger.error(f"No shop data found in database for: {shop_domain}")
         return redirect(url_for('install', shop=shop_domain))
     
-    # Verify active subscription before proceeding
+    # SECURITY: Verify access_token exists (proves OAuth was completed)
     access_token = shop_data.get('access_token')
-    if access_token:
-        active_subscriptions = get_active_subscriptions(shop_domain, access_token)
-        if not active_subscriptions:
-            logger.info(f"No active subscriptions found for shop: {shop_domain}, redirecting to plan selection")
-            return redirect(url_for('check_subscription', shop=shop_domain))
+    if not access_token:
+        logger.error(f"No access token found for shop: {shop_domain}")
+        return redirect(url_for('install', shop=shop_domain))
     
-    # Check company ID with third-party API before showing home page
+    # SECURITY: If session exists, verify it matches shop_domain (prevent session hijacking)
+    if session_shop and session_shop != shop_domain and not hmac_param:
+        logger.warning(f"Session shop mismatch: session={session_shop}, shop_domain={shop_domain}, forcing re-auth")
+        return redirect(url_for('install', shop=shop_domain))
+    
+    # Get plan and email from session
+    plan = session.get('plan', 'No Plan Selected')
+    email = session.get('email', 'No Email Provided')
+    
+    logger.info(f"Loading home page for shop: {shop_domain}")
+    
+    # Verify active subscription before proceeding
+    active_subscriptions = get_active_subscriptions(shop_domain, access_token)
+    if not active_subscriptions:
+        logger.info(f"No active subscriptions found for shop: {shop_domain}, redirecting to plan selection")
+        return redirect(url_for('check_subscription', shop=shop_domain))
+    
+    # OPTIMIZATION: Only check company_id API if not already in DB
+    company_id = shop_data.get('company_id')
+    
+    if company_id:
+        # Company ID already in DB - skip API call
+        logger.info(f"Company ID already in DB: {company_id} for shop: {shop_domain}")
+        store_url = shop_data.get('store_url', shop_domain.replace('.myshopify.com', ''))
+        
+        # Get counts for dashboard
+        initial_sync_completed = shop_data.get('initial_sync_completed', False)
+        pages_synced = db.get_pages_count(shop_domain)
+        blogs_synced = db.get_articles_count(shop_domain)
+        products_count = db.get_products_count(shop_domain)
+        collections_count = db.get_collections_count(shop_domain)
+        pages_total = get_total_pages_count(shop_domain, access_token) if access_token else 0
+        blogs_total = get_total_articles_count(shop_domain, access_token) if access_token else 0
+        
+        # Call autologin API and redirect
+        try:
+            autologin_response = requests.post(
+                'https://app.aerochat.ai/api/autologin',
+                json={'company_id': company_id},
+                headers={'Content-Type': 'application/json'},
+                timeout=10
+            )
+            
+            if autologin_response.status_code == 200:
+                autologin_data = autologin_response.json()
+                if autologin_data.get('status') and autologin_data.get('auto_login_link'):
+                    logger.info(f"Autologin successful for company_id: {company_id}")
+                    session['public_shop_domain'] = shop_domain
+                    session['public_store_name'] = shop_data.get('shop_name', store_url)
+                    session['public_company_id'] = company_id
+                    session['public_store_url'] = store_url
+                    return redirect(autologin_data['auto_login_link'])
+        except Exception as e:
+            logger.error(f"Error calling autologin API: {str(e)}")
+        
+        # Fallback to dashboard
+        return render_template(
+            'dashboard.html', 
+            shop_domain=shop_domain,
+            shop_data=shop_data, 
+            email=email, 
+            plan=plan, 
+            store_url=store_url,
+            company_id=company_id,
+            pages_synced=pages_synced,
+            pages_total=pages_total,
+            blogs_synced=blogs_synced,
+            blogs_total=blogs_total,
+            products_count=products_count,
+            collections_count=collections_count,
+            initial_sync_completed=initial_sync_completed
+        )
+    
+    # Company ID not in DB - need to fetch it from API
     store_url = shop_data.get('store_url', shop_domain.replace('.myshopify.com', ''))
-    logger.info(f"Checking company ID for store: {store_url}")
+    logger.info(f"Company ID not in DB, checking API for store: {store_url}")
     
     try:
         # Small delay to allow third-party record creation to finish on first load
@@ -242,15 +397,15 @@ def home():
             script_id = get_aerochat_script_id(shop_domain)
             if script_id:
                 # Save as Shopify metafield
-                metafield_saved = save_aerochat_script_id(shop, access_token, script_id)
+                metafield_saved = save_aerochat_script_id(shop_domain, access_token, script_id)
                 if metafield_saved:
-                    logger.info(f"Successfully saved script_id metafield for shop: {shop}")
-                    # Also save script_id in our database for reference
-                    db.create_or_update_shop(shop, script_id=script_id)
-                else:
-                    logger.warning(f"Failed to save script_id metafield for shop: {shop}")
+                    logger.info(f"Successfully saved script_id metafield for shop: {shop_domain}")
+                # Also save script_id in our database for reference
+                db.create_or_update_shop(shop_domain, script_id=script_id)
             else:
-                logger.warning(f"Could not fetch script_id for shop: {shop}")
+                logger.warning(f"Failed to save script_id metafield for shop: {shop_domain}")
+        else:
+            logger.warning(f"Could not fetch script_id for shop: {shop_domain}")
 
         # Retry company ID lookup a few times before showing store_not_found
         max_retries = 3
