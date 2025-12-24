@@ -61,7 +61,7 @@ def connect():
     
     # No HMAC - use session shop for security (prevent session hijacking)
     session_shop = session.get('shop')
-    
+    ## If the session shop is the same as the shop, use it
     if session_shop and session_shop == shop:
         # Verify session shop exists in DB with access_token
         shop_data = db.get_shop(session_shop)
