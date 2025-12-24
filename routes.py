@@ -334,7 +334,20 @@ def home():
         # Company ID already in DB - skip API call
         logger.info(f"Company ID already in DB: {company_id} for shop: {shop_domain}")
         store_url = shop_data.get('store_url', shop_domain.replace('.myshopify.com', ''))
-        
+        if shop_data.get('script_id') is None:
+            script_id = get_aerochat_script_id(shop_domain)
+            if script_id:
+                access_token = shop_data.get('access_token')
+                metafield_saved = save_aerochat_script_id(shop_domain, access_token, script_id)
+                if metafield_saved:
+                    logger.info(f"Successfully saved script_id metafield for shop: {shop_domain}")
+                else:
+                    logger.warning(f"Failed to save script_id metafield for shop: {shop_domain}")
+                db.create_or_update_shop(shop_domain, script_id=script_id)
+            else:
+                logger.warning(f"Failed to fetch script_id for shop: {shop_domain}")
+        else:
+            logger.info(f"Script ID already in DB: {shop_data.get('script_id')} for shop: {shop_domain}")
         # Get counts for dashboard
         initial_sync_completed = shop_data.get('initial_sync_completed', False)
         pages_synced = db.get_pages_count(shop_domain)
