@@ -62,7 +62,7 @@ def connect():
     # No HMAC - use session shop for security (prevent session hijacking)
     session_shop = session.get('shop')
     
-    if session_shop:
+    if session_shop and session_shop == shop:
         # Verify session shop exists in DB with access_token
         shop_data = db.get_shop(session_shop)
         if shop_data and shop_data.get('access_token'):
@@ -289,12 +289,12 @@ def home():
             shop_domain = session_shop
             logger.info(f"No HMAC, using shop from session: {shop_domain}")
         elif shop:
-            # Fallback to URL shop if no session (but less secure)
-            shop_domain = shop
-            logger.warning(f"No HMAC and no session, using shop from URL: {shop_domain}")
+            logger.warning(f"No HMAC and no session, redirecting to install for shop: {shop}")
+            ## Redirect to install
+            return redirect(url_for('install', shop=shop))
         else:
             logger.error("No shop found in session, URL, or HMAC")
-            return jsonify({'error': 'Shop parameter required'}), 400
+            return redirect(url_for('install', shop=shop))
     
     # SECURITY: Verify shop exists in database with access_token
     shop_data = db.get_shop(shop_domain)
