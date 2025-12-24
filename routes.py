@@ -432,10 +432,20 @@ def home():
                 
                 if company_id:
                     logger.info(f"Company ID found: {company_id} on attempt {attempt}")
-                    #####
+                    # save script id in our database
+                    script_id = get_aerochat_script_id(shop_domain)
+                    if script_id:
+                        metafield_saved = save_aerochat_script_id(shop_domain, access_token, script_id)
+                        if metafield_saved:
+                            logger.info(f"Successfully saved script_id metafield for shop: {shop_domain}")
+                        else:
+                            logger.warning(f"Failed to save script_id metafield for shop: {shop_domain}")
+                        db.create_or_update_shop(shop_domain, script_id=script_id)
+                    else:
+                        logger.warning(f"Failed to save script_id metafield for shop: {shop_domain}")
                     # Update shop data with company ID
                     db.create_or_update_shop(shop_domain, company_id=company_id)
-                    
+
                     # Check if initial sync is completed
                     initial_sync_completed = shop_data.get('initial_sync_completed', False)
                     logger.info(f"Initial sync status for {shop_domain}: {initial_sync_completed}")
